@@ -1,5 +1,7 @@
 use tauri::Manager;
 
+pub mod lrc;
+
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
