@@ -1,6 +1,8 @@
 use tauri::Manager;
 
 pub mod lrc;
+pub mod matcher;
+pub mod normalize;
 
 pub fn run() {
     tauri::Builder::default()
