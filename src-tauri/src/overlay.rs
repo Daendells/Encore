@@ -94,6 +94,7 @@ pub fn clamp_to_monitors(pos: (i32, i32), size: (i32, i32), monitors: &[Rect]) -
 static PLACED: AtomicBool = AtomicBool::new(false);
 /// Whether the strip is to be left out of captures; kept so it can be applied once the window is shown.
 static EXCLUDE: AtomicBool = AtomicBool::new(true);
+static SET_CTRL: Mutex<()> = Mutex::new(());
 static CTRL: AtomicBool = AtomicBool::new(false);
 /// Where the strip was when Ctrl went down, to tell whether it was dragged.
 static DRAG_FROM: Mutex<Option<(i32, i32)>> = Mutex::new(None);
@@ -169,18 +170,30 @@ pub fn apply(app: &AppHandle, settings: &Settings) {
     }
 }
 
+/// Runs `f` on the main thread, after anything already queued for it. The window library applies
+/// `show`, `hide` and `set_ignore_cursor_events` from another thread through a queue, and rebuilds
+/// the extended styles when it does; work that must see the result queues up behind them here.
+fn on_main(window: &WebviewWindow, f: impl FnOnce(&WebviewWindow) + Send + 'static) {
+    let w = window.clone();
+    let _ = window.run_on_main_thread(move || f(&w));
+}
+
 /// Keeps the strip out of screen sharing and recordings (spec B8), or lets it in. Windows refuses to
 /// change this on a layered window, which the window library makes for click-through, so a failed
 /// call is retried with click-through briefly off. Still failing (Windows before 10 2004): ignored,
 /// the strip is then simply captured.
 fn set_affinity(window: &WebviewWindow) {
-    let Ok(hwnd) = window.hwnd() else { return };
-    let affinity = if EXCLUDE.load(Ordering::SeqCst) { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE };
-    if unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.is_err() {
-        click_through(window, false);
-        let _ = unsafe { SetWindowDisplayAffinity(hwnd, affinity) };
-        click_through(window, !CTRL.load(Ordering::SeqCst));
-    }
+    on_main(window, |window| {
+        let Ok(hwnd) = window.hwnd() else { return };
+        let affinity = if EXCLUDE.load(Ordering::SeqCst) { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE };
+        if unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.is_err() {
+            // On the main thread these run at once, so the order is the one written here.
+            let _ = window.set_ignore_cursor_events(false);
+            let _ = unsafe { SetWindowDisplayAffinity(hwnd, affinity) };
+            let _ = window.set_ignore_cursor_events(!CTRL.load(Ordering::SeqCst));
+            drop_app_window_style(window);
+        }
+    });
 }
 
 /// Click-through on or off. Not taking focus comes from `focusable: false` in tauri.conf.json.
@@ -191,8 +204,12 @@ fn click_through(window: &WebviewWindow, on: bool) {
 
 /// A tool window without `WS_EX_APPWINDOW` is not listed in Alt+Tab. The window library rebuilds all
 /// extended styles whenever one of its flags changes (shown, hidden, click-through), so this is
-/// repeated after each of those calls.
+/// repeated after each of those calls, queued behind them.
 fn keep_out_of_alt_tab(window: &WebviewWindow) {
+    on_main(window, drop_app_window_style);
+}
+
+fn drop_app_window_style(window: &WebviewWindow) {
     if let Ok(hwnd) = window.hwnd() {
         unsafe {
             let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
@@ -243,6 +260,8 @@ pub fn set_visible(app: &AppHandle, visible: bool) {
 /// Ctrl down makes the strip clickable and draggable; Ctrl up makes it click-through again and,
 /// if it was dragged, remembers where it is.
 fn set_ctrl(app: &AppHandle, down: bool) {
+    // The raw-input thread and the engine thread both come here: one at a time, start to end.
+    let _one_at_a_time = SET_CTRL.lock().unwrap_or_else(PoisonError::into_inner);
     if CTRL.swap(down, Ordering::SeqCst) == down {
         return;
     }
@@ -270,7 +289,7 @@ fn set_ctrl(app: &AppHandle, down: bool) {
 
 const CLASS: PCWSTR = w!("LarikCtrlWatch");
 /// The message-only window of the running watch, as an integer so it can sit in a static.
-static WATCH: Mutex<Option<isize>> = Mutex::new(None);
+static WATCH: Mutex<Option<(isize, thread::JoinHandle<()>)>> = Mutex::new(None);
 
 thread_local! {
     static WATCH_APP: RefCell<Option<AppHandle>> = const { RefCell::new(None) };
@@ -298,7 +317,7 @@ pub fn start_ctrl_watch(app: &AppHandle) {
         let _ = tx.send(Some(hwnd.0 as isize));
         let mut msg = MSG::default();
         unsafe {
-            while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            while GetMessageW(&mut msg, None, 0, 0).0 > 0 {
                 DispatchMessageW(&msg);
             }
             // Ends the registration (it must be removed explicitly, a destroyed window is not enough).
@@ -307,15 +326,23 @@ pub fn start_ctrl_watch(app: &AppHandle) {
             let _ = RegisterRawInputDevices(&[remove], size_of::<RAWINPUTDEVICE>() as u32);
         }
     });
-    if spawned.is_ok() {
-        *watch = rx.recv().ok().flatten();
+    if let Ok(thread) = spawned {
+        match rx.recv().ok().flatten() {
+            Some(hwnd) => *watch = Some((hwnd, thread)),
+            None => {
+                let _ = thread.join();
+            }
+        }
     }
 }
 
-/// Removes the registration and ends the thread.
+/// Removes the registration and ends the thread. Waits for it, with the lock held, so that a
+/// start right after cannot have its registration removed by the thread that is leaving.
 pub fn stop_ctrl_watch() {
-    if let Some(hwnd) = WATCH.lock().unwrap_or_else(PoisonError::into_inner).take() {
+    let mut watch = WATCH.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((hwnd, thread)) = watch.take() {
         let _ = unsafe { PostMessageW(Some(HWND(hwnd as *mut _)), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+        let _ = thread.join();
     }
 }
 
@@ -353,27 +380,9 @@ unsafe fn create_watch_window() -> Option<HWND> {
 
 unsafe extern "system" fn watch_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
+        // A panic must not unwind into Windows.
         WM_INPUT => {
-            let mut raw = RAWINPUT::default();
-            let mut size = size_of::<RAWINPUT>() as u32;
-            let read = GetRawInputData(
-                HRAWINPUT(lparam.0 as *mut _),
-                RID_INPUT,
-                Some((&mut raw as *mut RAWINPUT).cast()),
-                &mut size,
-                size_of::<RAWINPUTHEADER>() as u32,
-            );
-            if read != u32::MAX && raw.header.dwType == RIM_TYPEKEYBOARD.0 {
-                let key = raw.data.keyboard;
-                if key.VKey == VK_CONTROL.0 {
-                    let down = u32::from(key.Flags) & RI_KEY_BREAK == 0;
-                    WATCH_APP.with(|a| {
-                        if let Some(app) = a.borrow().as_ref() {
-                            set_ctrl(app, down);
-                        }
-                    });
-                }
-            }
+            let _ = std::panic::catch_unwind(|| ctrl_from_input(lparam));
             DefWindowProcW(hwnd, msg, wparam, lparam) // required for input received in the background
         }
         WM_DESTROY => {
@@ -381,6 +390,30 @@ unsafe extern "system" fn watch_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpara
             LRESULT(0)
         }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+}
+
+/// Reads one raw keyboard event and passes on whether Ctrl went down or up.
+unsafe fn ctrl_from_input(lparam: LPARAM) {
+    let mut raw = RAWINPUT::default();
+    let mut size = size_of::<RAWINPUT>() as u32;
+    let read = GetRawInputData(
+        HRAWINPUT(lparam.0 as *mut _),
+        RID_INPUT,
+        Some((&mut raw as *mut RAWINPUT).cast()),
+        &mut size,
+        size_of::<RAWINPUTHEADER>() as u32,
+    );
+    if read != u32::MAX && raw.header.dwType == RIM_TYPEKEYBOARD.0 {
+        let key = raw.data.keyboard;
+        if key.VKey == VK_CONTROL.0 {
+            let down = u32::from(key.Flags) & RI_KEY_BREAK == 0;
+            WATCH_APP.with(|a| {
+                if let Some(app) = a.borrow().as_ref() {
+                    set_ctrl(app, down);
+                }
+            });
+        }
     }
 }
 
