@@ -223,9 +223,7 @@ fn drop_app_window_style(window: &WebviewWindow) {
 
 /// Back to the bottom centre, forgetting the saved position.
 pub fn reset_position(app: &AppHandle, store: &Store) {
-    let mut settings = store.load();
-    settings.position = None;
-    store.save(&settings);
+    let settings = store.update(|s| s.position = None);
     PLACED.store(false, Ordering::SeqCst);
     apply(app, &settings);
 }
@@ -233,9 +231,7 @@ pub fn reset_position(app: &AppHandle, store: &Store) {
 fn save_position(app: &AppHandle, pos: (i32, i32)) {
     if let Some(store) = store(app) {
         // Saved on top of the file, so a change made by the settings window in the meantime is kept.
-        let mut settings = store.load();
-        settings.position = Some(pos);
-        store.save(&settings);
+        store.update(|s| s.position = Some(pos));
     }
 }
 

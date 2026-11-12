@@ -83,23 +83,45 @@ fn lang(app: &AppHandle) -> Lang {
 /// engine reload it. The engine applies it to the strip (size, capture, the `style` event) and calls `refresh`.
 fn update(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
     let Some(store) = store(app) else { return };
-    let mut settings = store.load();
-    change(&mut settings);
-    store.save(&settings);
+    store.update(change);
     let _ = app.state::<Sender<Msg>>().send(Msg::SettingsChanged);
 }
 
-/// The tray icon and menu, and the global shortcuts.
+/// The global shortcuts and the tray. The app does not depend on the tray: if it cannot be built (at logon
+/// this can run before Explorer has created the notification area) the error is logged, the shortcuts and the
+/// strip keep working, and the tray is tried once more after 3 seconds.
 pub fn setup(app: &AppHandle, tx: Sender<Msg>) -> tauri::Result<()> {
     let lang = lang(app);
-    let settings = store(app).map(|s| s.load()).unwrap_or_default();
-
     for (code, _, _, key) in SHORTCUTS {
         if app.global_shortcut().register(shortcut(code)).is_err() {
             eprintln!("larik: the shortcut for \"{}\" is taken by another app", t(lang, key));
             app.state::<Shared>().unavailable.lock().unwrap_or_else(PoisonError::into_inner).insert(key);
         }
     }
+
+    if let Err(e) = build_tray(app, &tx) {
+        eprintln!("larik: no tray icon, trying again in 3 seconds: {e}");
+        let app = app.clone();
+        let spawned = thread::Builder::new().name("tray-retry".into()).spawn(move || {
+            thread::sleep(std::time::Duration::from_secs(3));
+            let on_main = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Err(e) = build_tray(&on_main, &tx) {
+                    eprintln!("larik: still no tray icon, running without it: {e}");
+                }
+            });
+        });
+        if spawned.is_err() {
+            eprintln!("larik: cannot retry the tray icon");
+        }
+    }
+    Ok(())
+}
+
+fn build_tray(app: &AppHandle, tx: &Sender<Msg>) -> tauri::Result<()> {
+    let tx = tx.clone();
+    let lang = lang(app);
+    let settings = store(app).map(|s| s.load()).unwrap_or_default();
 
     let toggle_text = t(lang, if settings.visible { "tray.hide" } else { "tray.show" });
     let toggle = MenuItem::with_id(app, "toggle", toggle_text, true, None::<&str>)?;

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, PoisonError};
 
 pub const FONT_PX_RANGE: std::ops::RangeInclusive<u32> = 12..=48;
 
@@ -23,6 +24,14 @@ impl Default for Settings {
     }
 }
 
+/// Every change to the two files is load, modify, save. The engine, the tray, the settings window and the
+/// Ctrl drag do this from different threads, so one lock covers the whole sequence.
+static WRITE: Mutex<()> = Mutex::new(());
+
+fn locked() -> std::sync::MutexGuard<'static, ()> {
+    WRITE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// Best effort like the lyric cache: a file that cannot be read or written is the same as no file.
 pub struct Store {
     dir: PathBuf,
@@ -41,7 +50,18 @@ impl Store {
     }
 
     pub fn save(&self, s: &Settings) {
+        let _one_at_a_time = locked();
         self.write("settings.json", s);
+    }
+
+    /// Loads, applies `change` and saves, all under the write lock, so two changes made at the same time both
+    /// stay. Returns what was saved.
+    pub fn update(&self, change: impl FnOnce(&mut Settings)) -> Settings {
+        let _one_at_a_time = locked();
+        let mut s = self.load();
+        change(&mut s);
+        self.write("settings.json", &s);
+        s
     }
 
     pub fn song_offset_ms(&self, cache_key: &str) -> i32 {
@@ -50,6 +70,7 @@ impl Store {
 
     /// 0 removes the entry.
     pub fn set_song_offset_ms(&self, cache_key: &str, ms: i32) {
+        let _one_at_a_time = locked();
         let mut offsets = self.offsets();
         if ms == 0 {
             offsets.remove(cache_key);
@@ -73,7 +94,9 @@ impl Store {
         let _ = fs::create_dir_all(&self.dir);
         // Written beside the file and renamed over it, so a crash never leaves half a file.
         if serde_json::to_vec_pretty(value).ok().is_some_and(|json| fs::write(&temp, json).is_ok()) {
-            let _ = fs::rename(&temp, &path);
+            if let Err(e) = fs::rename(&temp, &path) {
+                eprintln!("larik: cannot save {}: {e}", path.display());
+            }
         }
     }
 }
@@ -135,6 +158,21 @@ mod tests {
         for (stored, loaded) in [(2, 12), (12, 12), (48, 48), (500, 48)] {
             t.0.save(&Settings { font_px: stored, ..Settings::default() });
             assert_eq!(t.0.load().font_px, loaded);
+        }
+    }
+
+    #[test]
+    fn updates_from_two_threads_keep_both_fields() {
+        let t = Temp::new("two-threads");
+        let store = &t.0;
+        for round in 0..200 {
+            store.save(&Settings::default());
+            std::thread::scope(|scope| {
+                scope.spawn(|| _ = store.update(|s| s.visible = false));
+                scope.spawn(|| _ = store.update(|s| s.position = Some((round, 7))));
+            });
+            let s = store.load();
+            assert!(!s.visible && s.position == Some((round, 7)), "round {round}: {s:?}");
         }
     }
 

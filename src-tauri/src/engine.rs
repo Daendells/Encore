@@ -302,9 +302,7 @@ impl Engine {
 
     fn set_visible(&mut self, visible: bool, host: &dyn Host) {
         // Saved on top of the file, so a change made by the settings window in the meantime is kept.
-        let mut s = self.store.load();
-        s.visible = visible;
-        self.store.save(&s);
+        self.store.update(|s| s.visible = visible);
         self.reload_settings(host);
     }
 
