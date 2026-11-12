@@ -14,6 +14,7 @@
     "windows": [
       {
         "label": "overlay",
+        "create": false,
         "url": "overlay.html",
         "transparent": true,
         "decorations": false,
@@ -22,6 +23,7 @@
         "resizable": false,
         "shadow": false,
         "focus": false,
+        "focusable": false,
         "visible": false
       }
     ]
