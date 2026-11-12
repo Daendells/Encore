@@ -28,10 +28,14 @@ fn running(fetching: &Mutex<HashSet<String>>) -> MutexGuard<'_, HashSet<String>>
     fetching.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// WebView2 flags for every window: Tauri's own defaults plus no background networking, component updates or
-/// optimisation hints, so the app's only network traffic is LRCLIB. All windows must use the same string,
-/// because they share one WebView2 profile and WebView2 refuses to open a window whose flags differ.
-pub const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OptimizationHints --disable-background-networking --disable-component-update";
+/// WebView2 flags for every window: Tauri's own defaults plus what keeps the app's only network traffic
+/// LRCLIB and its memory small. All windows must use the same string, because they share one WebView2
+/// profile and WebView2 refuses to open a window whose flags differ.
+/// - `msOneAuthWAM,msForceOneAuthWAM`: with these on, WebView2 signs the Windows account in to Microsoft
+///   services at start (a connection to substrate.office.com). Both must be off, either one alone is not enough.
+/// - `--disable-gpu`: no GPU, so the strip is drawn in software. This removes about 60 MB of GPU process
+///   and the plate stays transparent. The strip is three lines of text, so nothing is lost.
+pub const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OptimizationHints,msOneAuthWAM,msForceOneAuthWAM --disable-background-networking --disable-component-update --disable-gpu";
 
 /// The engine's view of the machine: the overlay window, SMTC, LRCLIB and the clocks.
 struct TauriHost {
