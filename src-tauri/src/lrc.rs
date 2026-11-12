@@ -15,11 +15,18 @@ pub const INTRO_NOTE_MS: u32 = 5_000;
 pub const LONG_GAP_MS: u32 = 20_000;
 pub const NOTE_AFTER_MS: u32 = 10_000;
 
+/// Longer lines are skipped. The input is untrusted, and each timestamp on a line copies the line's
+/// text, so an unbounded line could ask for gigabytes.
+const MAX_LINE_BYTES: usize = 4096;
+
 /// Sorted by start_ms. `words` is empty when the line has no word timing. Empty `text` means a break (shown as ♪).
 pub fn parse(lrc: &str) -> Vec<Line> {
     let mut lines = Vec::new();
     let mut offset = 0i32;
     for raw in lrc.trim_start_matches('\u{feff}').lines() {
+        if raw.len() > MAX_LINE_BYTES {
+            continue;
+        }
         let mut rest = raw.trim();
         let mut starts = Vec::new();
         while let Some((tag, after)) = rest.strip_prefix('[').and_then(|r| r.split_once(']')) {
@@ -27,7 +34,10 @@ pub fn parse(lrc: &str) -> Vec<Line> {
                 Some(ms) => starts.push(ms),
                 None => {
                     // A bracket after a timestamp is lyric text ("[Chorus]"), not a tag.
-                    if let Some(value) = tag.strip_prefix("offset:").filter(|_| starts.is_empty()) {
+                    let offset_tag = tag
+                        .split_once(':')
+                        .filter(|(key, _)| starts.is_empty() && key.trim().eq_ignore_ascii_case("offset"));
+                    if let Some((_, value)) = offset_tag {
                         offset = value.trim().parse().unwrap_or(offset);
                     }
                     break;
@@ -36,7 +46,7 @@ pub fn parse(lrc: &str) -> Vec<Line> {
             rest = after.trim_start();
         }
         let Some(&first) = starts.first() else { continue };
-        let (text, mut words) = split_words(rest, first);
+        let Some((text, mut words)) = split_words(rest, first) else { continue };
         if starts.len() > 1 {
             // Word times are absolute, so they fit only one of the repeats.
             words.clear();
@@ -100,21 +110,28 @@ fn digits(s: &str) -> Option<u64> {
     s.bytes().all(|b| b.is_ascii_digit()).then(|| s.parse().ok())?
 }
 
-/// The next `<mm:ss.xx>` in `s`: where it opens, where the text after it begins, and its time.
-fn next_word_tag(s: &str) -> Option<(usize, usize, u32)> {
+/// The next `<...>` in `s` that is shaped like a timestamp (digits, `:` and `.`), valid or not:
+/// where it opens, where the text after it begins, and what is inside it.
+fn next_word_tag(s: &str) -> Option<(usize, usize, &str)> {
     let mut from = 0;
     while let Some(open) = s[from..].find('<').map(|i| i + from) {
-        let close = s[open..].find('>')? + open;
-        if let Some(ms) = timestamp(&s[open + 1..close]) {
-            return Some((open, close + 1, ms));
+        // Stopping at the next `<` as well keeps the scan linear on input full of stray `<`.
+        let end = s[open + 1..].find(['<', '>'])? + open + 1;
+        let tag = s[open + 1..end].trim();
+        let shaped = tag.starts_with(|c: char| c.is_ascii_digit())
+            && tag.contains(':')
+            && tag.bytes().all(|b| b.is_ascii_digit() || b == b':' || b == b'.');
+        if shaped && s[end..].starts_with('>') {
+            return Some((open, end + 1, tag));
         }
-        from = open + 1;
+        from = end;
     }
     None
 }
 
 /// Splits the text after the line timestamps into the display text and its timed words.
-fn split_words(body: &str, line_start: u32) -> (String, Vec<Word>) {
+/// None when a word tag is not a valid timestamp: the line is skipped, not shown with the tag in it.
+fn split_words(body: &str, line_start: u32) -> Option<(String, Vec<Word>)> {
     let mut words: Vec<Word> = Vec::new();
     let mut push = |start_ms: u32, text: &str| {
         if !text.trim().is_empty() {
@@ -124,16 +141,16 @@ fn split_words(body: &str, line_start: u32) -> (String, Vec<Word>) {
         }
     };
     let (mut rest, mut start) = (body, line_start);
-    while let Some((open, after, ms)) = next_word_tag(rest) {
+    while let Some((open, after, tag)) = next_word_tag(rest) {
         push(start, &rest[..open]);
-        (rest, start) = (&rest[after..], ms);
+        (rest, start) = (&rest[after..], timestamp(tag)?);
     }
     if rest.len() == body.len() {
-        return (body.to_string(), Vec::new()); // no word tags
+        return Some((body.to_string(), Vec::new())); // no word tags
     }
     push(start, rest);
     let text: String = words.iter().map(|w| w.text.as_str()).collect();
-    (text.trim().to_string(), words)
+    Some((text.trim().to_string(), words))
 }
 
 #[cfg(test)]
@@ -291,6 +308,54 @@ mod tests {
         assert!(parse("[00:10.0000]four fraction digits").is_empty());
         assert!(parse("[]\n[:]\n[00:]\n<00:10.00>\n[offset:abc]\n[\u{e9}\u{e9}:\u{e9}\u{e9}]").is_empty());
         assert_eq!(texts(&parse("[00:10.00]caf\u{e9} <\u{e9}> <00:1")), ["caf\u{e9} <\u{e9}> <00:1"]);
+    }
+
+    #[test]
+    fn overlong_line_is_skipped() {
+        let fits = format!("[00:02.00]{}", "a".repeat(4096 - 10));
+        let too_long = format!("[00:03.00]{}", "b".repeat(4096 - 9));
+        assert_eq!((fits.len(), too_long.len()), (4096, 4097));
+
+        let lines = parse(&format!("[00:01.00]before\n{too_long}\n{fits}\r\n[00:04.00]after"));
+        assert_eq!(starts(&lines), [1_000, 2_000, 4_000]);
+        assert_eq!(lines[0].text, "before");
+        assert_eq!(lines[1].text.len(), 4096 - 10);
+        assert_eq!(lines[2].text, "after");
+
+        // Many repeated timestamps with a long text must not multiply into a huge allocation.
+        let bomb = format!("{}{}", "[00:01]".repeat(10_000), "x".repeat(100_000));
+        assert_eq!(texts(&parse(&format!("{bomb}\n[00:05.00]ok"))), ["ok"]);
+    }
+
+    #[test]
+    fn offset_tag_ignores_case_and_spaces() {
+        assert_eq!(starts(&parse("[Offset:500]\n[00:10.00]A")), [9_500]);
+        assert_eq!(starts(&parse("[ offset: 500 ]\n[00:10.00]A")), [9_500]);
+        assert_eq!(starts(&parse("[OFFSET : -500]\n[00:10.00]A")), [10_500]);
+    }
+
+    #[test]
+    fn malformed_word_tag_skips_the_line() {
+        let lines = parse(
+            "[00:10.00]<00:10.0000>Never <00:10.50>gonna\n\
+             [00:20.00]give <99999999999:00.00>you\n\
+             [00:30.00]up <1:2:3:4>\n\
+             [00:40.00]ok",
+        );
+        assert_eq!(lines, [line(40_000, "ok")]);
+    }
+
+    #[test]
+    fn stray_angle_bracket_before_a_word_tag_is_text() {
+        let lines = parse("[00:10.00]a <b <00:10.50>c > d");
+        assert_eq!(lines[0].text, "a <b c > d");
+        assert_eq!(
+            lines[0].words,
+            [
+                Word { start_ms: 10_000, text: "a <b ".to_string() },
+                Word { start_ms: 10_500, text: "c > d".to_string() },
+            ]
+        );
     }
 
     #[test]
