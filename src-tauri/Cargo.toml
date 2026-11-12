@@ -20,9 +20,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 strsim = "0.11.1"
 unicode-normalization = "0.1.26"
-windows = { version = "0.62.2", features = ["Foundation", "Media_Control", "Win32_System_WinRT", "Win32_System_LibraryLoader", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+windows = { version = "0.62.2", features = ["Foundation", "Media_Control", "Win32_System_WinRT", "Win32_System_LibraryLoader", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Globalization"] }
 windows-future = "0.3.2"
 ureq = { version = "3.5.1", default-features = false, features = ["rustls"] }
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
 
 [profile.dev]
 debug = "line-tables-only"

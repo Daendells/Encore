@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larik</title>
+<link rel="stylesheet" href="settings.css">
+</head>
+<body>
+<main>
+  <h1 data-t="settings.title"></h1>
+  <p id="error" role="alert" hidden></p>
+
+  <section>
+    <div class="row">
+      <label for="size" data-t="settings.size"></label>
+      <output id="size-out" for="size"></output>
+    </div>
+    <input id="size" type="range" min="12" max="48" step="1">
+  </section>
+
+  <section aria-labelledby="offsets-title">
+    <h2 id="offsets-title" data-t="settings.offsets"></h2>
+    <p id="offsets-help" class="help" data-t="settings.offsets.help"></p>
+    <p id="offsets-empty" class="help" data-t="settings.offsets.empty" hidden></p>
+    <ul id="offsets"></ul>
+  </section>
+
+  <section>
+    <div class="check">
+      <input id="capture" type="checkbox" aria-describedby="capture-help">
+      <label for="capture" data-t="settings.capture"></label>
+    </div>
+    <p id="capture-help" class="help hang" data-t="settings.capture.help"></p>
+    <div class="check">
+      <input id="autostart" type="checkbox">
+      <label for="autostart" data-t="settings.autostart"></label>
+    </div>
+  </section>
+
+  <section aria-labelledby="shortcuts-title">
+    <h2 id="shortcuts-title" data-t="settings.shortcuts"></h2>
+    <ul id="shortcuts"></ul>
+    <p class="help" data-t="settings.move_hint"></p>
+    <p class="help"><span data-t="settings.version"></span> <span id="version"></span></p>
+  </section>
+</main>
+<script src="settings.js"></script>
+</body>
+</html>

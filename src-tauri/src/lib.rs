@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindowBuilder, WindowEvent};
 pub mod cache;
 pub mod clock;
 pub mod engine;
+pub mod i18n;
 pub mod lrc;
 pub mod lrclib;
 pub mod lyrics;
@@ -17,6 +18,7 @@ pub mod normalize;
 pub mod overlay;
 pub mod schedule;
 pub mod settings;
+pub mod shell;
 pub mod smtc;
 pub mod timing_log;
 
@@ -49,6 +51,7 @@ impl Host for TauriHost {
 
     fn settings_changed(&self, settings: &settings::Settings) {
         overlay::apply(&self.app, settings);
+        shell::refresh(&self.app, settings);
     }
 
     fn fetch_lyrics(&self, key: String, track: matcher::Track) {
@@ -69,7 +72,11 @@ impl Host for TauriHost {
     }
 
     fn read_smtc(&mut self) -> Option<smtc::Snapshot> {
-        self.watcher.as_mut()?.read()
+        let snapshot = self.watcher.as_mut()?.read();
+        if let Some(s) = &snapshot {
+            self.app.state::<shell::Shared>().saw_app(&s.app);
+        }
+        snapshot
     }
 
     fn now_mono_ms(&self) -> f64 {
@@ -90,9 +97,19 @@ fn shown(seq: u64, tx: tauri::State<Sender<Msg>>) {
 pub fn run() {
     let (tx, rx) = mpsc::channel();
     let engine_tx = tx.clone();
+    let second_start = tx.clone();
+    let shortcut_tx = tx.clone();
+    let shell_tx = tx.clone();
     tauri::Builder::default()
+        // First, so that a second start ends before anything else is set up. It shows the strip of the first.
+        .plugin(tauri_plugin_single_instance::init(move |_, _, _| {
+            let _ = second_start.send(Msg::SetVisible(true));
+        }))
+        .plugin(tauri_plugin_autostart::Builder::new().app_name("Larik").build())
+        .plugin(shell::shortcut_plugin(shortcut_tx))
         .manage(tx)
-        .invoke_handler(tauri::generate_handler![shown])
+        .manage(shell::Shared::new(i18n::detect()))
+        .invoke_handler(tauri::generate_handler![shown, shell::get_settings, shell::set_settings, shell::strings])
         .setup(move |app| {
             let timing = timing_log::TimingLog::from_env();
             let dir = app.path().app_local_data_dir()?;
@@ -113,6 +130,7 @@ pub fn run() {
             .initialization_script(script)
             .build()?;
             overlay::apply(app.handle(), &settings);
+            shell::setup(app.handle(), shell_tx)?;
             let display = app.handle().clone();
             overlay.on_window_event(move |event| {
                 // Another monitor or a new scale: the size in physical pixels changes. On its own thread

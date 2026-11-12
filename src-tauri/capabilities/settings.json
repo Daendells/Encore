@@ -1,0 +1,13 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "windows": ["settings"],
+  "permissions": [
+    "allow-get-settings",
+    "allow-set-settings",
+    "allow-strings",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
+  ]
+}
