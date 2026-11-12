@@ -23,12 +23,14 @@ function setRow(row, text) {
   if (text != null) row.textContent = text;
 }
 
-/** Where a visible row is now: vertical centre, opacity and font size. */
+/** Where a visible row is on screen now, in-flight transforms included: centre, height, colour, opacity, effective text size. */
 function look(row) {
   if (row.hidden) return null;
   const box = row.getBoundingClientRect();
   const css = getComputedStyle(row);
-  return { y: box.top + box.height / 2, h: box.height, opacity: css.opacity, size: parseFloat(css.fontSize) };
+  // The box is scaled by a running slide, the layout height (offsetHeight) is not.
+  const size = (parseFloat(css.fontSize) * box.height) / row.offsetHeight;
+  return { y: box.top + box.height / 2, h: box.height, color: css.color, opacity: css.opacity, size };
 }
 
 /** The current line as one span per word, dim until its turn. Returns the spans that still have to light up. */
@@ -53,9 +55,10 @@ function setWords(words) {
 
 function showLines(ui) {
   const slide = ui.animate && showingLines && !reduceMotion.matches;
-  plate.classList.remove("slide");
+  // Measured before anything changes, so a slide still running is measured where it is on screen.
   // After a step forward the old current row becomes prev, the old next row becomes current.
   const old = slide ? { cur: look(rows.cur), next: look(rows.next) } : null;
+  plate.classList.remove("slide"); // also ends any running transition
 
   plate.hidden = false;
   setRow(rows.prev, ui.prev);
@@ -71,11 +74,12 @@ function showLines(ui) {
       const now = look(row);
       if (!now) continue;
       const src = from[name];
-      // The row starts where its text was, at the size and opacity it had, then moves to its own place.
+      // The row starts where its text was, at the size, colour and opacity it had, then moves to its own place.
       const dy = src ? src.y - now.y : now.h;
       const scale = src ? src.size / now.size : 1;
       row.style.transform = `translateY(${dy}px) scale(${scale})`;
       row.style.opacity = src ? src.opacity : 0;
+      if (src) row.style.color = src.color;
     }
   }
   if (old || pending.length) void plate.offsetWidth; // commit the start state before the end state is set
@@ -84,6 +88,7 @@ function showLines(ui) {
     for (const row of Object.values(rows)) {
       row.style.transform = "";
       row.style.opacity = "";
+      row.style.color = "";
     }
   }
   for (const span of pending) span.classList.add("on");

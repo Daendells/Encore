@@ -29,28 +29,32 @@ body {
 
 body.drag #plate { cursor: move; outline: 1px solid rgba(255, 255, 255, .6); }
 
-/* Wrap first (balanced); the two-line clamp is only a safety net for text that still does not fit. */
+/* Wrap first (balanced); the two-line clamp is only a safety net for text that still does not fit.
+   The clip needs room for the outline and shadow (about 8px), which the negative margin gives back. */
 .row {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
-  padding: .05em .1em;
+  padding: 8px;
+  margin: -7px -8px;
   text-align: center;
   text-wrap: balance;
   overflow-wrap: anywhere;
 }
-.prev { font-size: .7em; opacity: .45; }
-.cur { font-weight: 600; opacity: 1; }
-.cur.dim { opacity: .6; }
-.next { font-size: .7em; opacity: .6; }
+/* The dimming is on the text colour, not the element opacity, so the black outline stays fully opaque. */
+.prev { font-size: .7em; color: rgb(255 255 255 / .45); }
+.cur { font-weight: 600; }
+.cur.dim { color: rgb(255 255 255 / .6); }
+.next { font-size: .7em; color: rgb(255 255 255 / .6); }
 
+/* Opacity is only for a row that slides in from nothing. */
 #plate.slide .row {
-  transition: transform 180ms cubic-bezier(.2, .8, .2, 1), opacity 180ms cubic-bezier(.2, .8, .2, 1);
+  transition: transform 180ms cubic-bezier(.2, .8, .2, 1), color 180ms cubic-bezier(.2, .8, .2, 1), opacity 180ms cubic-bezier(.2, .8, .2, 1);
 }
 
-.w { opacity: .55; transition-property: opacity; transition-timing-function: linear; }
-.w.on { opacity: 1; }
+.w { color: rgb(255 255 255 / .55); transition-property: color; transition-timing-function: linear; }
+.w.on { color: inherit; }
 
 #toast {
   margin-bottom: 6px;
@@ -69,6 +73,15 @@ body.drag #plate { cursor: move; outline: 1px solid rgba(255, 255, 255, .6); }
   100% { opacity: 0; }
 }
 
+/* No movement and no fades. A word still lights at its own time: the delay stays, the fade is zero. */
 @media (prefers-reduced-motion: reduce) {
   #plate.slide .row { transition: none; }
+  .w { transition-duration: 0s !important; }
+  #toast.go { animation-name: toast-fade; }
+}
+@keyframes toast-fade {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
 }
