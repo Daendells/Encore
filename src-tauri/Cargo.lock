@@ -1983,6 +1983,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "unicode-normalization",
  "ureq",
+ "webview2-com",
  "windows",
  "windows-future",
 ]

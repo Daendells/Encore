@@ -235,9 +235,27 @@ fn save_position(app: &AppHandle, pos: (i32, i32)) {
     }
 }
 
+/// Asks WebView2 to keep its memory use low while the strip is hidden and normal while it is shown.
+fn memory_level(window: &WebviewWindow, low: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+    };
+    use windows::core::Interface;
+    let level =
+        if low { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
+    let _ = window.with_webview(move |webview| unsafe {
+        if let Ok(core) = webview.controller().CoreWebView2() {
+            if let Ok(core) = core.cast::<ICoreWebView2_19>() {
+                let _ = core.SetMemoryUsageTargetLevel(level);
+            }
+        }
+    });
+}
+
 /// Shows or hides the strip. The Ctrl watch only exists while it is shown.
 pub fn set_visible(app: &AppHandle, visible: bool) {
     let Some(window) = overlay_window(app) else { return };
+    memory_level(&window, !visible);
     if visible {
         let _ = window.show();
         keep_out_of_alt_tab(&window);
