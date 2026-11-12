@@ -27,6 +27,8 @@ body {
   background: rgba(0, 0, 0, .35);
 }
 
+body.drag #plate { cursor: move; outline: 1px solid rgba(255, 255, 255, .6); }
+
 /* Wrap first (balanced); the two-line clamp is only a safety net for text that still does not fit. */
 .row {
   display: -webkit-box;

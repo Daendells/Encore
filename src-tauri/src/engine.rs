@@ -65,6 +65,8 @@ pub struct UiWord {
 pub trait Host {
     fn emit(&self, ui: &Ui);
     fn set_overlay_visible(&self, visible: bool);
+    /// The settings were (re)loaded: size, position and capture exclusion of the window follow them.
+    fn settings_changed(&self, _settings: &Settings) {}
     /// Starts a lookup that ends in `Msg::Lyrics`. A second request for a key still running is ignored.
     fn fetch_lyrics(&self, key: String, track: Track);
     fn read_smtc(&mut self) -> Option<Snapshot>;
@@ -308,6 +310,7 @@ impl Engine {
 
     fn reload_settings(&mut self, host: &dyn Host) {
         self.settings = self.store.load();
+        host.settings_changed(&self.settings);
         if let Some(c) = &mut self.cur {
             c.song_offset_ms = self.store.song_offset_ms(&c.key);
         }

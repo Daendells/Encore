@@ -14,6 +14,10 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 // Whether the plate currently shows lyric lines (a slide only makes sense from one line set to the next).
 let showingLines = false;
 
+// The first size comes with the page (an event sent before this script listens would be lost).
+const firstPx = Number(window.__LARIK_FONT_PX__);
+if (Number.isFinite(firstPx) && firstPx > 0) document.documentElement.style.setProperty("--font", `${firstPx}px`);
+
 function setRow(row, text) {
   row.hidden = text == null;
   if (text != null) row.textContent = text;
@@ -121,4 +125,13 @@ listen("ui", (event) => {
 listen("style", (event) => {
   const px = Number(event.payload.font_px);
   if (Number.isFinite(px) && px > 0) document.documentElement.style.setProperty("--font", `${px}px`);
+});
+
+// While Ctrl is held the window takes mouse input and the plate can be dragged.
+listen("drag", (event) => document.body.classList.toggle("drag", event.payload.on === true));
+
+document.addEventListener("mousedown", (event) => {
+  if (event.button === 0 && document.body.classList.contains("drag")) {
+    window.__TAURI__.window.getCurrentWindow().startDragging().catch(() => {});
+  }
 });

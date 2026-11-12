@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use tauri::{AppHandle, Emitter, Manager, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindowBuilder, WindowEvent};
 
 pub mod cache;
 pub mod clock;
@@ -14,6 +14,7 @@ pub mod lrclib;
 pub mod lyrics;
 pub mod matcher;
 pub mod normalize;
+pub mod overlay;
 pub mod schedule;
 pub mod settings;
 pub mod smtc;
@@ -42,10 +43,12 @@ impl Host for TauriHost {
     }
 
     fn set_overlay_visible(&self, visible: bool) {
-        if let Some(overlay) = self.app.get_webview_window("overlay") {
-            // The window is built with focus off, so showing it does not take focus from the player.
-            let _ = if visible { overlay.show() } else { overlay.hide() };
-        }
+        // The window is built with focus off, so showing it does not take focus from the player.
+        overlay::set_visible(&self.app, visible);
+    }
+
+    fn settings_changed(&self, settings: &settings::Settings) {
+        overlay::apply(&self.app, settings);
     }
 
     fn fetch_lyrics(&self, key: String, track: matcher::Track) {
@@ -92,21 +95,39 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![shown])
         .setup(move |app| {
             let timing = timing_log::TimingLog::from_env();
-
-            let config = app.config().app.windows.iter().find(|w| w.label == "overlay").cloned();
-            let mut overlay = WebviewWindowBuilder::from_config(
-                app.handle(),
-                &config.ok_or("the overlay window is missing from tauri.conf.json")?,
-            )?;
-            if timing.is_some() {
-                // Asks the overlay to answer every line with `shown`.
-                overlay = overlay.initialization_script("window.__LARIK_TIMING__ = true;");
-            }
-            overlay.build()?;
-
             let dir = app.path().app_local_data_dir()?;
             let store = settings::Store::new(dir.clone());
-            let engine = Engine::new(store.load(), store, cache::Cache::new(dir.join("cache")))
+            let settings = store.load();
+
+            let config = app.config().app.windows.iter().find(|w| w.label == "overlay").cloned();
+            // The first font size goes in with the page: an event sent before the page listens is lost.
+            let mut script = format!("window.__LARIK_FONT_PX__ = {};", settings.font_px);
+            if timing.is_some() {
+                // Asks the overlay to answer every line with `shown`.
+                script.push_str("window.__LARIK_TIMING__ = true;");
+            }
+            let overlay = WebviewWindowBuilder::from_config(
+                app.handle(),
+                &config.ok_or("the overlay window is missing from tauri.conf.json")?,
+            )?
+            .initialization_script(script)
+            .build()?;
+            overlay::apply(app.handle(), &settings);
+            let display = app.handle().clone();
+            overlay.on_window_event(move |event| {
+                // Another monitor or a new scale: the size in physical pixels changes. On its own thread
+                // because the window is mid-resize when this fires.
+                if matches!(event, WindowEvent::ScaleFactorChanged { .. }) {
+                    let app = display.clone();
+                    thread::spawn(move || {
+                        if let Ok(dir) = app.path().app_local_data_dir() {
+                            overlay::apply(&app, &settings::Store::new(dir).load());
+                        }
+                    });
+                }
+            });
+
+            let engine = Engine::new(settings, store, cache::Cache::new(dir.join("cache")))
                 .with_timing_log(timing);
             let app = app.handle().clone();
             thread::Builder::new().name("engine".into()).spawn(move || {
