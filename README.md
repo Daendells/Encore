@@ -38,7 +38,7 @@ Semua angka diukur pada versi rilis (`npm run tauri build`) dengan satu lagu dip
 | Ukuran installer | kurang dari 15 MiB | 1,75 MiB (1.834.012 byte) | `Larik_0.1.0_x64-setup.exe` |
 | Salah cocok pada 50 lagu uji | 0 | TODO-ANGKA | Lagu yang mendapat lirik lagu lain |
 | Lagu uji yang mendapat lirik | tanpa target | TODO-ANGKA dari 50 | Sisanya tidak ditemukan |
-| Alamat tujuan jaringan selain LRCLIB | 0 | TODO-ANGKA | Alamat TCP yang terlihat selama pengukuran (TCP saja, dicuplik tiap 200 milidetik. Koneksi singkat dan UDP/QUIC tidak terlihat) |
+| Alamat tujuan jaringan selain LRCLIB | 0 | TODO-ANGKA | Alamat TCP yang terlihat selama pengukuran (TCP saja, dicuplik kira-kira tiap 350 milidetik. Koneksi singkat dan UDP/QUIC tidak terlihat) |
 
 Tanggal ukur: TODO-ANGKA. Mesin: TODO-ANGKA.
 
@@ -58,7 +58,7 @@ cd src-tauri
 cargo run --release --example eval -- ..\eval\sample.json hasil.json
 ```
 
-Log waktu hanya aktif kalau `LARIK_TIMING_LOG` diisi. Yang dihitung hanya baris yang dimunculkan timer, yaitu pindah tepat satu baris maju. Baris yang muncul karena jeda atau lanjut putar, tampil atau sembunyi, geser offset, seek, ganti pengaturan, atau baris pertama lagu tidak dihitung, dan skrip menyebutkan jumlahnya. Pengukuran jaringan hanya melihat koneksi TCP yang dicuplik tiap 200 milidetik, jadi koneksi singkat dan UDP/QUIC tidak terlihat. Log ini mengukur kapan Larik menggambar baris, tidak kapan suara terdengar. Karena itu offset tetap perlu untuk keterlambatan tetap dari pemutar.
+Log waktu hanya aktif kalau `LARIK_TIMING_LOG` diisi. Yang dihitung hanya baris yang dimunculkan timer, yaitu pindah tepat satu baris maju. Baris yang muncul karena jeda atau lanjut putar, tampil atau sembunyi, geser offset, seek, ganti pengaturan, atau baris pertama lagu tidak dihitung, dan skrip menyebutkan jumlahnya. Pengukuran jaringan hanya melihat koneksi TCP yang dicuplik kira-kira tiap 350 milidetik, jadi koneksi singkat dan UDP/QUIC tidak terlihat. Log ini mengukur kapan Larik menggambar baris, tidak kapan suara terdengar. Karena itu offset tetap perlu untuk keterlambatan tetap dari pemutar.
 
 ## Batasan
 
@@ -145,11 +145,11 @@ All numbers come from a release build (`npm run tauri build`) playing one song f
 | Installer size | under 15 MiB | 1.75 MiB (1,834,012 bytes) | `Larik_0.1.0_x64-setup.exe` |
 | Wrong matches in the 50-song test set | 0 | TODO-ANGKA | Songs that received another song's lyrics |
 | Test songs that got lyrics | no target | TODO-ANGKA of 50 | The rest were not found |
-| Network destinations other than LRCLIB | 0 | TODO-ANGKA | TCP addresses seen during the measurement (TCP only, sampled every 200 ms. Short connections and UDP/QUIC are not seen) |
+| Network destinations other than LRCLIB | 0 | TODO-ANGKA | TCP addresses seen during the measurement (TCP only, sampled about every 350 ms. Short connections and UDP/QUIC are not seen) |
 
 Measured on: TODO-ANGKA. Machine: TODO-ANGKA.
 
-To measure again, use the PowerShell commands in the Indonesian section above (the 50-song blind set is kept outside the repo, `eval/sample.json` is a small example). The timing log counts only lines the timer put on screen, that is, a move forward by exactly one line. Lines shown after pause or resume, show or hide, an offset nudge, a seek, a settings change or the first line of a song are not counted, and the script reports how many were left out. The network check sees TCP connections only, sampled every 200 ms, so short connections and UDP/QUIC are not seen. The timing log records when Larik draws a line, not when the sound is heard, so the per-app offset stays useful for fixed player delay.
+To measure again, use the PowerShell commands in the Indonesian section above (the 50-song blind set is kept outside the repo, `eval/sample.json` is a small example). The timing log counts only lines the timer put on screen, that is, a move forward by exactly one line. Lines shown after pause or resume, show or hide, an offset nudge, a seek, a settings change or the first line of a song are not counted, and the script reports how many were left out. The network check sees TCP connections only, sampled about every 350 ms, so short connections and UDP/QUIC are not seen. The timing log records when Larik draws a line, not when the sound is heard, so the per-app offset stays useful for fixed player delay.
 
 ## Limitations
 
