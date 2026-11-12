@@ -214,6 +214,7 @@ pub fn open_settings(app: &AppHandle) {
             .title(t(lang(&app), "settings.title"))
             .inner_size(420.0, 520.0)
             .center()
+            .additional_browser_args(crate::WEBVIEW_ARGS)
             .build();
         if let Ok(window) = built {
             // The tray's check mark must show what the settings window changed in the Run key.

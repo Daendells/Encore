@@ -28,6 +28,11 @@ fn running(fetching: &Mutex<HashSet<String>>) -> MutexGuard<'_, HashSet<String>>
     fetching.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// WebView2 flags for every window: Tauri's own defaults plus no background networking, component updates or
+/// optimisation hints, so the app's only network traffic is LRCLIB. All windows must use the same string,
+/// because they share one WebView2 profile and WebView2 refuses to open a window whose flags differ.
+pub const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OptimizationHints --disable-background-networking --disable-component-update";
+
 /// The engine's view of the machine: the overlay window, SMTC, LRCLIB and the clocks.
 struct TauriHost {
     app: AppHandle,
@@ -127,6 +132,7 @@ pub fn run() {
                 app.handle(),
                 &config.ok_or("the overlay window is missing from tauri.conf.json")?,
             )?
+            .additional_browser_args(WEBVIEW_ARGS)
             .initialization_script(script)
             .build()?;
             overlay::apply(app.handle(), &settings);
