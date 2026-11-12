@@ -22,8 +22,8 @@ pub trait Fetch {
 
 /// Returns the lyrics and the accepted candidate (None when not found), which the eval runner prints.
 ///
-/// Stops at the first accepted candidate. An error is returned only when every call failed: one answer
-/// is enough to say that nothing was found.
+/// Stops at the first accepted candidate. When nothing is accepted and a call failed, the first error is
+/// returned: "not found" is said only after every call answered, because the caller keeps it for days.
 pub fn resolve(track: &Track, fetch: &dyn Fetch) -> Result<(Lyrics, Option<Candidate>), FetchError> {
     // The matcher accepts nothing for a pair with an empty key, so such a pair is not looked up.
     let pairs: Vec<(String, String)> = candidates(&track.title, &track.artist)
@@ -31,7 +31,6 @@ pub fn resolve(track: &Track, fetch: &dyn Fetch) -> Result<(Lyrics, Option<Candi
         .filter(|(title, artist)| !key(title).is_empty() && !key(artist).is_empty())
         .collect();
     let duration_s = track.duration_ms / 1000 + u32::from(track.duration_ms % 1000 >= 500);
-    let mut answered = false;
     let mut failed = None;
 
     for (i, (title, artist)) in pairs.iter().enumerate() {
@@ -39,8 +38,8 @@ pub fn resolve(track: &Track, fetch: &dyn Fetch) -> Result<(Lyrics, Option<Candi
         let album = if i == 0 { track.album.as_str() } else { "" };
         match fetch.get(title, artist, album, duration_s) {
             Ok(Some(c)) if score(title, artist, track.duration_ms, &c).is_some() => return Ok(accept(c)),
-            Ok(_) => answered = true,
-            Err(e) => failed = Some(e),
+            Ok(_) => {}
+            Err(e) => failed = failed.or(Some(e)),
         }
     }
     for (title, artist) in &pairs {
@@ -49,14 +48,13 @@ pub fn resolve(track: &Track, fetch: &dyn Fetch) -> Result<(Lyrics, Option<Candi
                 if let Some(c) = best(track, &found) {
                     return Ok(accept(c.clone()));
                 }
-                answered = true;
             }
-            Err(e) => failed = Some(e),
+            Err(e) => failed = failed.or(Some(e)),
         }
     }
     match failed {
-        Some(e) if !answered => Err(e),
-        _ => Ok((Lyrics::NotFound, None)),
+        Some(e) => Err(e),
+        None => Ok((Lyrics::NotFound, None)),
     }
 }
 
@@ -222,9 +220,20 @@ mod tests {
     }
 
     #[test]
-    fn error_on_one_call_without_a_match_is_not_found() {
+    fn partial_failure_without_match_is_err() {
+        // The lookup was not complete, so "not found" is not known and must not be cached.
         let fake = Fake::new(vec![Ok(None)], vec![Err(down())]);
-        assert_eq!(resolve(&yellow(), &fake).unwrap(), (Lyrics::NotFound, None));
+        assert!(matches!(resolve(&yellow(), &fake), Err(FetchError::Network(_))));
+        let wrong_song = cand(1, "Clocks", "Coldplay", 267.0);
+        let fake = Fake::new(vec![Err(down())], vec![Ok(vec![wrong_song])]);
+        assert!(matches!(resolve(&yellow(), &fake), Err(FetchError::Network(_))));
+        assert_eq!(fake.calls().len(), 2);
+    }
+
+    #[test]
+    fn first_error_is_the_one_returned() {
+        let fake = Fake::new(vec![Err(down())], vec![Err(FetchError::BadResponse("HTTP 500".to_string()))]);
+        assert!(matches!(resolve(&yellow(), &fake), Err(FetchError::Network(_))));
     }
 
     #[test]

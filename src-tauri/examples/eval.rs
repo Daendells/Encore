@@ -1,5 +1,5 @@
 //! Looks up every song of a test set on the live LRCLIB and reports how many matches were right.
-//! Usage: cargo run --release --bin eval -- ../eval/songs.json [out.json]
+//! Usage: cargo run --release --example eval -- ../eval/songs.json [out.json]
 //! Prints names, ids, durations and outcomes only, never lyrics.
 
 use std::process::ExitCode;

@@ -7,8 +7,9 @@ use crate::matcher::Candidate;
 const BASE: &str = "https://lrclib.net";
 const USER_AGENT: &str = concat!("Larik/", env!("CARGO_PKG_VERSION"), " (https://github.com/Daendells/larik)");
 const TIMEOUT: Duration = Duration::from_secs(10);
-/// A longer response is refused.
-const MAX_BODY_BYTES: usize = 1024 * 1024;
+/// A longer response is refused. A search for a song with long lyrics is about 1.3 MB: each of its 20 results
+/// repeats the lyrics three times.
+const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 /// Longer synced lyrics are dropped: each timestamp makes the parser copy its line.
 const MAX_SYNCED_BYTES: usize = 200_000;
 const MAX_SEARCH_RESULTS: usize = 20;
@@ -63,7 +64,8 @@ impl Fetch for LrcLib {
     }
 }
 
-/// What is read of an LRCLIB record. Fields that LRCLIB sends as null are optional here.
+/// What is read of an LRCLIB record. Fields that LRCLIB sends as null are optional here. The other fields,
+/// such as the large `plainLyrics` and `lyricsfile`, are skipped while parsing and never stored.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Record {
@@ -129,8 +131,9 @@ fn parse_get(body: &str) -> Result<Option<Candidate>, FetchError> {
 
 /// A result that is not a usable record is left out; the others are kept.
 fn parse_search(body: &str) -> Result<Vec<Candidate>, FetchError> {
-    let results: Vec<serde_json::Value> = serde_json::from_str(body).map_err(bad_json)?;
-    let records = results.into_iter().take(MAX_SEARCH_RESULTS).filter_map(|r| serde_json::from_value::<Record>(r).ok());
+    // Each result stays a slice of the body until it is read as a record, so a bad one fails alone.
+    let results: Vec<&serde_json::value::RawValue> = serde_json::from_str(body).map_err(bad_json)?;
+    let records = results.iter().take(MAX_SEARCH_RESULTS).filter_map(|r| serde_json::from_str::<Record>(r.get()).ok());
     Ok(records.filter_map(Record::candidate).collect())
 }
 
@@ -238,6 +241,15 @@ mod tests {
     }
 
     #[test]
+    fn lyric_fields_that_are_not_shown_are_not_read() {
+        // Of any type and any size: they are skipped, never stored.
+        let rest = r#","duration":200,"plainLyrics":7,"lyricsfile":{"lines":[1,2]},"syncedLyrics":"[00:01.00] la""#;
+        let c = parse_get(&record(1, rest)).unwrap().unwrap();
+        assert_eq!(c.synced_lyrics.as_deref(), Some("[00:01.00] la"));
+        assert_eq!(parse_search(&format!("[{}]", record(1, rest))).unwrap(), [c]);
+    }
+
+    #[test]
     fn record_without_a_duration_is_no_candidate() {
         assert_eq!(parse_get(&record(1, r#","duration":null,"syncedLyrics":"[00:01.00] la""#)).unwrap(), None);
         assert_eq!(parse_get(&record(1, "")).unwrap(), None);
@@ -281,6 +293,8 @@ mod tests {
         let body = |len: usize| read_body(std::io::repeat(b'a').take(len as u64));
         assert_eq!(body(MAX_BODY_BYTES).unwrap().len(), MAX_BODY_BYTES);
         assert!(matches!(body(MAX_BODY_BYTES + 1), Err(FetchError::BadResponse(_))));
+        // The size of a real search for a song with long lyrics (Rap God, 2026-11-12).
+        assert!(body(1_276_485).is_ok());
         // Reading stops at the limit however much is sent.
         assert!(matches!(read_body(std::io::repeat(b'a')), Err(FetchError::BadResponse(_))));
     }
