@@ -1,13 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
 <meta charset="utf-8">
 <title>Larik</title>
 <link rel="stylesheet" href="overlay.css">
 </head>
 <body>
-<p>Previous line</p>
-<p>Current line</p>
-<p>Next line</p>
+<div id="toast" hidden></div>
+<div id="plate" hidden>
+  <div class="row prev" id="prev"></div>
+  <div class="row cur" id="cur"></div>
+  <div class="row next" id="next"></div>
+</div>
+<script src="overlay.js"></script>
 </body>
 </html>

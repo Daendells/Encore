@@ -1,3 +1,72 @@
-html, body { margin: 0; background: transparent; }
-body { font: 22px "Segoe UI", sans-serif; color: #fff; text-align: center; text-shadow: 0 0 4px #000; }
-p { margin: 4px 0; }
+:root { --font: 22px; }
+[hidden] { display: none !important; }
+
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+body {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  font: 400 var(--font) / 1.3 "Segoe UI Variable Text", "Segoe UI", "Yu Gothic UI", "Malgun Gothic", "Microsoft YaHei UI", sans-serif;
+  color: #fff;
+  /* A 1px dark outline in eight directions keeps the glyph edges readable on any plate colour; the last layer is the soft shadow. */
+  text-shadow:
+    -1px -1px 0 #000, 0 -1px 0 #000, 1px -1px 0 #000,
+    -1px 0 0 #000, 1px 0 0 #000,
+    -1px 1px 0 #000, 0 1px 0 #000, 1px 1px 0 #000,
+    0 2px 6px rgba(0, 0, 0, .5);
+}
+
+#plate {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: .3em .8em;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, .35);
+}
+
+/* Wrap first (balanced); the two-line clamp is only a safety net for text that still does not fit. */
+.row {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  padding: .05em .1em;
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.prev { font-size: .7em; opacity: .45; }
+.cur { font-weight: 600; opacity: 1; }
+.cur.dim { opacity: .6; }
+.next { font-size: .7em; opacity: .6; }
+
+#plate.slide .row {
+  transition: transform 180ms cubic-bezier(.2, .8, .2, 1), opacity 180ms cubic-bezier(.2, .8, .2, 1);
+}
+
+.w { opacity: .55; transition-property: opacity; transition-timing-function: linear; }
+.w.on { opacity: 1; }
+
+#toast {
+  margin-bottom: 6px;
+  padding: .15em .7em;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, .35);
+  font-size: .7em;
+  font-weight: 600;
+  opacity: 0;
+}
+#toast.go { animation: toast 1.2s linear forwards; }
+@keyframes toast {
+  0% { opacity: 0; transform: translateY(4px); }
+  12% { opacity: 1; transform: none; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #plate.slide .row { transition: none; }
+}
