@@ -42,19 +42,19 @@ body.drag #plate { cursor: move; outline: 1px solid rgba(255, 255, 255, .6); }
   text-wrap: balance;
   overflow-wrap: anywhere;
 }
-/* The dimming is on the text colour, not the element opacity, so the black outline stays fully opaque. */
-.prev { font-size: .7em; color: rgb(255 255 255 / .45); }
-.cur { font-weight: 600; }
-.cur.dim { color: rgb(255 255 255 / .6); }
-.next { font-size: .7em; color: rgb(255 255 255 / .6); }
+/* Opaque greys, not alpha: a translucent fill lets the black outline underneath show through and muddies the glyphs. */
+.prev { font-size: .7em; color: #a8a8a8; }
+.cur { font-weight: 600; color: #fff; }
+.cur.dim { color: #c8c8c8; }
+.next { font-size: .7em; color: #c8c8c8; }
 
 /* Opacity is only for a row that slides in from nothing. */
 #plate.slide .row {
   transition: transform 180ms cubic-bezier(.2, .8, .2, 1), color 180ms cubic-bezier(.2, .8, .2, 1), opacity 180ms cubic-bezier(.2, .8, .2, 1);
 }
 
-.w { color: rgb(255 255 255 / .55); transition-property: color; transition-timing-function: linear; }
-.w.on { color: inherit; }
+.w { color: #a8a8a8; transition-property: color; transition-timing-function: linear; }
+.w.on { color: #fff; }
 
 #toast {
   margin-bottom: 6px;
