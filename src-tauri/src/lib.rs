@@ -37,7 +37,7 @@ fn running(fetching: &Mutex<HashSet<String>>) -> MutexGuard<'_, HashSet<String>>
 ///   and the plate stays transparent. The strip is three lines of text, so nothing is lost.
 /// - `--single-process`: the page, network and storage run inside the WebView2 browser process instead of
 ///   four more processes (about 40 MB less). Microsoft does not document this flag. A crash of the page
-///   then takes the whole WebView2 down, and the strip stays blank until Larik is restarted.
+///   then takes the whole WebView2 down; `overlay::restart_on_webview_failure` restarts the app when that happens.
 pub const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OptimizationHints,msOneAuthWAM,msForceOneAuthWAM --disable-background-networking --disable-component-update --disable-gpu --single-process";
 
 /// The engine's view of the machine: the overlay window, SMTC, LRCLIB and the clocks.
@@ -142,6 +142,7 @@ pub fn run() {
             .additional_browser_args(WEBVIEW_ARGS)
             .initialization_script(script)
             .build()?;
+            overlay::restart_on_webview_failure(app.handle(), &overlay);
             overlay::apply(app.handle(), &settings);
             shell::setup(app.handle(), shell_tx)?;
             let display = app.handle().clone();

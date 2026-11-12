@@ -235,6 +235,52 @@ fn save_position(app: &AppHandle, pos: (i32, i32)) {
     }
 }
 
+/// A restart after a WebView2 failure is skipped when the last one was less than this many seconds ago,
+/// so a failure that repeats at start cannot make the app restart in a loop.
+const RESTART_GAP_SECS: u64 = 30;
+/// File in the app data folder holding the time (Unix seconds) of the last restart after a failure.
+const RESTART_MARKER: &str = "restarted-after-failure";
+
+fn restart_allowed(last: Option<u64>, now: u64) -> bool {
+    last.is_none_or(|t| now.saturating_sub(t) >= RESTART_GAP_SECS)
+}
+
+/// WebView2 runs in a single process (see `WEBVIEW_ARGS`), so a failure leaves the strip blank for good.
+/// On any WebView2 process failure the app logs it and restarts itself, unless it already did so
+/// less than 30 s ago: then it only logs.
+pub fn restart_on_webview_failure(app: &AppHandle, window: &WebviewWindow) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PROCESS_FAILED_KIND;
+    let app = app.clone();
+    let _ = window.with_webview(move |webview| unsafe {
+        let Ok(core) = webview.controller().CoreWebView2() else { return };
+        let mut token = 0;
+        let handler = webview2_com::ProcessFailedEventHandler::create(Box::new(move |_, args| {
+            let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+            if let Some(args) = args {
+                let _ = args.ProcessFailedKind(&mut kind);
+            }
+            let marker = app.path().app_local_data_dir().ok().map(|dir| dir.join(RESTART_MARKER));
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let last = marker
+                .as_ref()
+                .and_then(|m| std::fs::read_to_string(m).ok())
+                .and_then(|text| text.trim().parse::<u64>().ok());
+            if restart_allowed(last, now) {
+                eprintln!("larik: WebView2 process failed (kind {}), restarting", kind.0);
+                if let Some(m) = &marker {
+                    let _ = std::fs::write(m, now.to_string());
+                }
+                app.restart();
+            }
+            eprintln!("larik: WebView2 process failed (kind {}), not restarting again so soon", kind.0);
+            Ok(())
+        }));
+        let _ = core.add_ProcessFailed(&handler, &mut token);
+    });
+}
+
 /// Asks WebView2 to keep its memory use low while the strip is hidden and normal while it is shown.
 fn memory_level(window: &WebviewWindow, low: bool) {
     use webview2_com::Microsoft::Web::WebView2::Win32::{
@@ -435,7 +481,17 @@ unsafe fn ctrl_from_input(lparam: LPARAM) {
 mod tests {
     use super::*;
 
-    const SCREEN: Rect = Rect { x: 0, y: 0, w: 1920, h: 1080 };
+    #[test]
+    fn restart_only_when_the_last_one_is_30_seconds_old() {
+        assert!(restart_allowed(None, 1000));
+        assert!(!restart_allowed(Some(1000), 1000));
+        assert!(!restart_allowed(Some(1000), 1029));
+        assert!(restart_allowed(Some(1000), 1030));
+        // A clock that went back is not a reason to restart.
+        assert!(!restart_allowed(Some(1000), 900));
+    }
+
+    const SCREEN: Rect =Rect { x: 0, y: 0, w: 1920, h: 1080 };
 
     #[test]
     fn default_rect_is_60_percent_centred_above_taskbar() {
