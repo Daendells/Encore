@@ -1,11 +1,19 @@
 use unicode_normalization::UnicodeNormalization;
 
 /// A group or " - " suffix holding one of these as a whole word is a decoration.
-const DECORATIONS: [&str; 28] = [
-    "remaster", "remastered", "live", "feat", "ft.", "featuring", "version", "edit", "mix", "mono", "stereo", "deluxe",
-    "bonus", "explicit", "clean", "acoustic", "from ", "ost", "official", "video", "audio", "lyric", "lyrics", "mv",
-    "m/v", "visualizer", "hd", "4k",
+const DECORATIONS: [&str; 25] = [
+    "remaster", "remastered", "live", "feat", "ft.", "featuring", "mono", "stereo", "deluxe", "bonus", "explicit",
+    "clean", "acoustic", "from ", "ost", "official", "video", "audio", "lyric", "lyrics", "mv", "m/v", "visualizer",
+    "hd", "4k",
 ];
+/// These decorate only next to words that leave the lyrics alone: "(Album Version)" is removed,
+/// "(Japanese Version)" is kept so that it can only match a record with the same qualifier.
+const WEAK_DECORATIONS: [&str; 4] = ["version", "ver", "edit", "mix"];
+/// Besides a year and an ordinal ("25th"). The neutral words that are in DECORATIONS need no entry here.
+const NEUTRAL: [&str; 9] =
+    ["album", "single", "radio", "original", "extended", "studio", "digital", "anniversary", "edition"];
+/// Longer titles or artists are not looked up: a web page can put anything in its media title.
+pub const MAX_INPUT_CHARS: usize = 300;
 const BRACKETS: [(char, char); 5] = [('(', ')'), ('[', ']'), ('（', '）'), ('［', '］'), ('【', '】')];
 const DASHES: [&str; 3] = [" - ", " – ", " — "];
 
@@ -49,7 +57,11 @@ pub fn key(s: &str) -> String {
 
 /// Query pairs (title, artist) to try, most likely first, deduplicated. Always includes the cleaned pair;
 /// adds ("Judul", "Artis") when the title has the form "Artis - Judul" (spec B12).
+/// Empty when the title or the artist is longer than MAX_INPUT_CHARS.
 pub fn candidates(title: &str, artist: &str) -> Vec<(String, String)> {
+    if too_long(title) || too_long(artist) {
+        return Vec::new();
+    }
     let mut pairs = vec![(clean_title(title), clean_artist(artist))];
     let groupless = collapse(&strip_groups(title));
     if let Some((left, right)) = split_dash(&groupless, false) {
@@ -62,6 +74,10 @@ pub fn candidates(title: &str, artist: &str) -> Vec<(String, String)> {
         }
     }
     pairs
+}
+
+pub(crate) fn too_long(s: &str) -> bool {
+    s.chars().nth(MAX_INPUT_CHARS).is_some()
 }
 
 fn collapse(s: &str) -> String {
@@ -111,12 +127,26 @@ fn split_dash(s: &str, last: bool) -> Option<(&str, &str)> {
 
 fn is_decoration(content: &str, parenthesised: bool) -> bool {
     let content = content.trim().to_ascii_lowercase();
-    let bare_year = content.len() == 4
-        && (content.starts_with("19") || content.starts_with("20"))
-        && content.bytes().all(|b| b.is_ascii_digit());
-    bare_year
+    if is_year(&content)
         || DECORATIONS.iter().any(|w| find_word(&content, w).is_some())
         || (parenthesised && find_word(&content, "with ").is_some())
+    {
+        return true;
+    }
+    let neutral = |w: &str| {
+        w.is_empty() || WEAK_DECORATIONS.contains(&w) || NEUTRAL.contains(&w) || is_year(w) || is_ordinal(w)
+    };
+    WEAK_DECORATIONS.iter().any(|w| find_word(&content, w).is_some())
+        && content.split(|c: char| !c.is_alphanumeric()).all(neutral)
+}
+
+fn is_year(s: &str) -> bool {
+    s.len() == 4 && (s.starts_with("19") || s.starts_with("20")) && s.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn is_ordinal(s: &str) -> bool {
+    let digits = |n: &str| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit());
+    ["st", "nd", "rd", "th"].iter().any(|end| s.strip_suffix(end).is_some_and(digits))
 }
 
 /// First place where `word` stands as a whole word: "live" is not found in "alive" or "olivia".
@@ -202,6 +232,48 @@ mod tests {
         assert_eq!(clean_title("Song (feat. X) - Remastered 2011 [Official Audio]"), "Song");
         assert_eq!(clean_title("Song - Live - 2009 Remaster"), "Song");
         assert_eq!(clean_title("Song (feat. X (of Y)) [HD]"), "Song");
+    }
+
+    #[test]
+    fn version_group_with_lyric_changing_qualifier_is_kept() {
+        for input in [
+            "Cupid - Twin Version",
+            "Song (Japanese Version)",
+            "Song (Instrumental Version)",
+            "Song (Karaoke Version)",
+            "Song -Japanese ver.-",
+            "Song (Japanese Ver.)",
+            "Song (日本語 Version)",
+            "Song (Club Mix)",
+            "Song (Fan Edit)",
+            "Song (Version 2)",
+            "Love Story (Taylor's Version)",
+        ] {
+            assert_eq!(clean_title(input), input);
+        }
+        for (input, want) in [
+            ("Song (Album Version)", "Song"),
+            ("Song - Single Version", "Song"),
+            ("Song - Radio Edit", "Song"),
+            ("Title - 2011 Remaster", "Title"),
+            ("Song (Original Mix)", "Song"),
+            ("Song (Extended Version)", "Song"),
+            ("Song (Album Ver.)", "Song"),
+            ("Song (2019 Mix)", "Song"),
+            ("Song (25th Anniversary Version)", "Song"),
+            ("Song (2nd Version)", "Song"),
+            ("Song (Japanese Version) [Official Video]", "Song (Japanese Version)"),
+        ] {
+            assert_eq!(clean_title(input), want, "{input}");
+        }
+    }
+
+    #[test]
+    fn overlong_input_is_rejected() {
+        let long = "a".repeat(301);
+        assert_eq!(candidates(&long, "Artist"), []);
+        assert_eq!(candidates("Song", &long), []);
+        assert_eq!(candidates(&long[..300], "Artist").len(), 1);
     }
 
     #[test]
