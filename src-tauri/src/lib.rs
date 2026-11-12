@@ -1,11 +1,13 @@
 use tauri::Manager;
 
 pub mod cache;
+pub mod clock;
 pub mod lrc;
 pub mod lrclib;
 pub mod lyrics;
 pub mod matcher;
 pub mod normalize;
+pub mod schedule;
 
 pub fn run() {
     tauri::Builder::default()
