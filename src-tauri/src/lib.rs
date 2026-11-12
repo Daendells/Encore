@@ -8,6 +8,7 @@ pub mod lyrics;
 pub mod matcher;
 pub mod normalize;
 pub mod schedule;
+pub mod smtc;
 
 pub fn run() {
     tauri::Builder::default()

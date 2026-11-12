@@ -1683,6 +1683,8 @@ dependencies = [
  "tauri-build",
  "unicode-normalization",
  "ureq",
+ "windows",
+ "windows-future",
 ]
 
 [[package]]
