@@ -1,6 +1,9 @@
 use tauri::Manager;
 
+pub mod cache;
 pub mod lrc;
+pub mod lrclib;
+pub mod lyrics;
 pub mod matcher;
 pub mod normalize;
 

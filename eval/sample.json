@@ -1,0 +1,33 @@
+[
+  {
+    "id": "en-01",
+    "smtc_title": "Yellow",
+    "smtc_artist": "Coldplay",
+    "smtc_album": "Parachutes",
+    "duration_ms": 266773,
+    "expect": "match",
+    "expect_title": "Yellow",
+    "expect_artist": "Coldplay",
+    "note": "Plain title as a music app sends it"
+  },
+  {
+    "id": "yt-01",
+    "smtc_title": "Keane - Somewhere Only We Know (Official Music Video)",
+    "smtc_artist": "KeaneVEVO",
+    "smtc_album": "",
+    "duration_ms": 237000,
+    "expect": "match",
+    "expect_title": "Somewhere Only We Know",
+    "expect_artist": "Keane",
+    "note": "Video title with the artist in front and a channel name as the artist"
+  },
+  {
+    "id": "none-01",
+    "smtc_title": "Lagu Yang Tidak Ada 8271",
+    "smtc_artist": "Tidak Ada Band",
+    "smtc_album": "",
+    "duration_ms": 200000,
+    "expect": "none",
+    "note": "Made-up song: nothing may be accepted"
+  }
+]
