@@ -120,7 +120,7 @@ pub struct Engine {
     shown: bool,
     seq: u64,
     /// `(seq, index, line start)` of the latest `Ui::Lines`, for the `shown` rows of the timing log.
-    last_emit: Option<(u64, Option<usize>, u32)>,
+    last_emit: Option<(u64, Option<usize>, u32, bool)>,
     read_at: Option<f64>,
     line_at: Option<f64>,
     card_at: Option<f64>,
@@ -172,11 +172,11 @@ impl Engine {
             Msg::Nudge(delta) => self.nudge(delta, host),
             Msg::SettingsChanged => self.reload_settings(host),
             Msg::Shown { seq } => {
-                let (idx, start) = match self.last_emit {
-                    Some((last, idx, start)) if last == seq => (idx, Some(start)),
-                    _ => (None, None),
+                let (idx, start, timer) = match self.last_emit {
+                    Some((last, idx, start, timer)) if last == seq => (idx, Some(start), timer),
+                    _ => (None, None, false),
                 };
-                self.log_row("shown", host, idx, start, &seq.to_string());
+                self.log_row("shown", host, idx, start, &emit_extra(seq, timer));
             }
             Msg::Quit => {}
         }
@@ -384,9 +384,9 @@ impl Engine {
             let ui = self.lines_ui(idx, now, animate);
             host.emit(&ui);
             let start = idx.map(|i| self.lines()[i].start_ms);
-            self.last_emit = Some((self.seq, idx, start.unwrap_or(0)));
+            self.last_emit = Some((self.seq, idx, start.unwrap_or(0), animate));
             self.told = Some(Told { idx, playing });
-            self.log_row("emit", host, idx, start, &self.seq.to_string());
+            self.log_row("emit", host, idx, start, &emit_extra(self.seq, animate));
         }
         self.apply_visibility(host);
         self.arm_line_timer(now);
@@ -460,6 +460,12 @@ impl Engine {
             log.row(kind, host.now_wall_ms(), &self.app, title, idx, start, pos, extra);
         }
     }
+}
+
+/// Timing log marker of an emit and its `shown`: `timer` when the line timer advanced exactly one line, `other` for
+/// every emit with a different cause (resume, show, nudge, settings, first line), whose time is not a line start.
+fn emit_extra(seq: u64, timer: bool) -> String {
+    format!("{seq} {}", if timer { "timer" } else { "other" })
 }
 
 fn wall_secs(wall_ms: i64) -> u64 {
@@ -1108,6 +1114,38 @@ mod tests {
     }
 
     #[test]
+    fn timing_log_marks_timer_emits_apart_from_pause() {
+        #[derive(Clone, Default)]
+        struct Shared(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Shared {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let out = Shared::default();
+        let mut r = Rig::with(Settings::default(), Some(TimingLog::new(Box::new(out.clone()))));
+        r.poll(play("Song", 2_000.0));
+        let deadline = r.lyrics(Ok(Lyrics::Synced(song()))).unwrap();
+        // The line timer fires: "two" follows "one" (seq 2). A pause then re-emits the same line (seq 3).
+        r.h.mono = deadline;
+        r.step(None);
+        r.step(Some(Msg::Shown { seq: 2 }));
+        r.poll(pause("Song", 5_100.0));
+        r.step(Some(Msg::Shown { seq: 3 }));
+        let log = String::from_utf8(out.0.lock().unwrap().clone()).unwrap();
+        let extras: Vec<&str> = log
+            .lines()
+            .filter(|l| l.starts_with("emit,") || l.starts_with("shown,"))
+            .map(|l| l.rsplit(',').next().unwrap())
+            .collect();
+        assert_eq!(extras, ["1 other", "2 timer", "2 timer", "3 other", "3 other"]);
+    }
+
+    #[test]
     fn timing_log_rows_for_sync_emit_and_shown() {
         #[derive(Clone, Default)]
         struct Shared(Arc<Mutex<Vec<u8>>>);
@@ -1132,8 +1170,8 @@ mod tests {
         let w = WALL;
         let expected = format!(
             "sync,{},Spotify.exe,Song,,,2000,first\n\
-             emit,{},Spotify.exe,Song,0,1000,2000,1\n\
-             shown,{},Spotify.exe,Song,0,1000,2010,1\n\
+             emit,{},Spotify.exe,Song,0,1000,2000,1 other\n\
+             shown,{},Spotify.exe,Song,0,1000,2010,1 other\n\
              sync,{},Spotify.exe,Song,0,1000,3055,-5\n",
             w + 60,
             w + 60,

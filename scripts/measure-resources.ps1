@@ -22,16 +22,25 @@ if (-not (Get-Tree)) { Write-Error "larik.exe is not running"; exit 1 }
 
 $samples = @()
 $remotes = @{}
-$prev = $null
+$prev = @{}   # PID -> total CPU seconds at the last sample
+$prevTime = $null
+$lr = @{}
+function Add-Lrclib { try { [System.Net.Dns]::GetHostAddresses("lrclib.net") | ForEach-Object { $lr[$_.ToString()] = $true } } catch {} }
+Add-Lrclib
 $end = (Get-Date).AddSeconds($Seconds)
 while ((Get-Date) -lt $end) {
     $procs = @(Get-Tree)
     $now = Get-Date
-    $cpu = 0.0
-    foreach ($p in $procs) { try { $cpu += $p.TotalProcessorTime.TotalSeconds } catch {} }
-    if ($prev -and $procs.Count) {
-        $wall = ($now - $prev.Time).TotalSeconds
-        $delta = [Math]::Max(0.0, $cpu - $prev.Cpu)
+    # CPU delta per PID: a process that appears or exits during the run adds only its own time
+    $delta = 0.0
+    $cur = @{}
+    foreach ($p in $procs) {
+        try { $t = $p.TotalProcessorTime.TotalSeconds } catch { continue }
+        $cur[$p.Id] = $t
+        if ($prev.ContainsKey($p.Id)) { $delta += [Math]::Max(0.0, $t - $prev[$p.Id]) }
+    }
+    if ($prevTime -and $procs.Count) {
+        $wall = ($now - $prevTime).TotalSeconds
         $samples += [pscustomobject]@{
             CpuOneCore  = 100.0 * $delta / $wall
             CpuAllCores = 100.0 * $delta / $wall / $cores
@@ -39,7 +48,8 @@ while ((Get-Date) -lt $end) {
             Private     = ($procs | Measure-Object PrivateMemorySize64 -Sum).Sum / 1MB
         }
     }
-    $prev = @{ Time = $now; Cpu = $cpu }
+    $prev = $cur
+    $prevTime = $now
     $ids = @($procs | ForEach-Object { $_.Id })
     Get-NetTCPConnection -ErrorAction SilentlyContinue |
         Where-Object { $ids -contains $_.OwningProcess -and $_.RemoteAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') } |
@@ -55,17 +65,18 @@ function Row($label, $values, $fmt) {
 "Larik resource run: $($samples.Count) samples over $Seconds s, every $interval s, $cores logical cores"
 Row "CPU, % of all logical cores (Task Manager)" $samples.CpuAllCores "0.00"
 Row "CPU, % of one core" $samples.CpuOneCore "0.00"
-Row "RAM, working set sum of tree (MB)" $samples.WorkingSet "0.0"
-Row "RAM, private bytes sum of tree (MB)" $samples.Private "0.0"
+Row "RAM, working set sum of tree (MiB)" $samples.WorkingSet "0.0"
+Row "RAM, private bytes sum of tree (MiB)" $samples.Private "0.0"
 
 "`nRemote TCP endpoints of the process tree seen during the run:"
-$lr = @()
-try { $lr = [System.Net.Dns]::GetHostAddresses("lrclib.net") | ForEach-Object { $_.ToString() } } catch {}
-"lrclib.net resolves to: $($lr -join ', ')"
+Add-Lrclib
+$lrList = @($lr.Keys)
+"Method: TCP connections only, sampled every $interval s. Short connections and UDP/QUIC are not seen."
+"lrclib.net resolved at the start and end of the run to: $($lrList -join ', ')"
 if (-not $remotes.Count) { "(none)" }
 foreach ($k in ($remotes.Keys | Sort-Object)) {
     $addr = $remotes[$k]
     $name = try { [System.Net.Dns]::GetHostEntry($addr).HostName } catch { "(no reverse name)" }
-    $tag = if ($lr -contains $addr) { "LRCLIB" } else { "NOT lrclib.net" }
+    $tag = if ($lrList -contains $addr) { "LRCLIB" } else { "NOT lrclib.net" }
     "{0,-26} {1,-40} {2}" -f $k, $name, $tag
 }

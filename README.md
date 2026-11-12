@@ -15,7 +15,7 @@ Bahasa Indonesia ada di bawah ini, [English version below](#english).
 5. Satu timer dibuat untuk baris berikutnya dan dihitung ulang setiap sinkronisasi. Tidak ada polling cepat. Saat strip disembunyikan atau tidak ada lagu, hanya pendengar SMTC yang aktif.
 6. Jendela strip (WebView2) hanya menggambar. Pergantian baris memakai transisi CSS 180 ms, dan transisi dimatikan kalau Windows diatur untuk mengurangi gerakan. Lirik yang punya waktu per kata (enhanced LRC) disorot kata demi kata. Lirik tanpa waktu per kata menyala per baris.
 
-Lirik disimpan di folder data aplikasi (`%LOCALAPPDATA%\io.github.daendells.larik`), satu file per lagu. Hasil "tidak ditemukan" disimpan 7 hari. Galat jaringan tidak disimpan, jadi lagu itu dicoba lagi saat diputar berikutnya.
+Lirik disimpan di folder data aplikasi (`%LOCALAPPDATA%\io.github.daendells.larik`), satu file per lagu. Hasil "tidak ditemukan" disimpan 7 hari. Kesalahan jaringan tidak disimpan, jadi lagu itu dicoba lagi saat diputar berikutnya.
 
 ### Tampilan
 
@@ -30,15 +30,15 @@ Semua angka diukur pada versi rilis (`npm run tauri build`) dengan satu lagu dip
 
 | Hal | Target | Hasil | Arti |
 |---|---|---|---|
-| Selisih rata-rata waktu baris tampil terhadap waktu di LRC | kurang dari 150 ms | TODO-ANGKA ms | Rata-rata nilai mutlak selisih, dari log waktu |
+| Selisih rata-rata waktu baris tampil terhadap waktu di LRC | kurang dari 150 ms | TODO-ANGKA ms | Rata-rata nilai mutlak selisih pada baris yang dimunculkan timer, dari log waktu |
 | Selisih p95 | kurang dari 300 ms | TODO-ANGKA ms | 95% baris tampil dengan selisih sekecil ini atau lebih kecil |
 | CPU saat lagu jalan | rata-rata kurang dari 1% | TODO-ANGKA % | Persen dari seluruh inti logis (seperti Task Manager). Persen dari satu inti: TODO-ANGKA % |
-| RAM seluruh proses (private bytes) | kurang dari 80 MB | TODO-ANGKA MB | Jumlah Larik dan semua proses WebView2 miliknya |
-| RAM seluruh proses (working set) | tanpa target | TODO-ANGKA MB | Lebih besar karena menghitung halaman yang dipakai bersama |
-| Ukuran installer | kurang dari 15 MB | 1,75 MB (1.834.012 byte) | `Larik_0.1.0_x64-setup.exe` |
+| RAM seluruh proses (private bytes) | kurang dari 80 MiB | TODO-ANGKA MiB | Jumlah Larik dan semua proses WebView2 miliknya |
+| RAM seluruh proses (working set) | tanpa target | TODO-ANGKA MiB | Lebih besar karena menghitung halaman yang dipakai bersama |
+| Ukuran installer | kurang dari 15 MiB | 1,75 MiB (1.834.012 byte) | `Larik_0.1.0_x64-setup.exe` |
 | Salah cocok pada 50 lagu uji | 0 | TODO-ANGKA | Lagu yang mendapat lirik lagu lain |
 | Lagu uji yang mendapat lirik | tanpa target | TODO-ANGKA dari 50 | Sisanya tidak ditemukan |
-| Alamat tujuan jaringan selain LRCLIB | 0 | TODO-ANGKA | Alamat TCP yang terlihat selama pengukuran |
+| Alamat tujuan jaringan selain LRCLIB | 0 | TODO-ANGKA | Alamat TCP yang terlihat selama pengukuran (TCP saja, dicuplik tiap 5 detik. Koneksi singkat dan UDP/QUIC tidak terlihat) |
 
 Tanggal ukur: TODO-ANGKA. Mesin: TODO-ANGKA.
 
@@ -53,12 +53,12 @@ node scripts\timing-report.mjs "$env:TEMP\larik-timing.csv"
 # CPU, RAM, dan alamat jaringan selama 300 detik (Larik harus sedang jalan)
 powershell -File scripts\measure-resources.ps1 -Seconds 300
 
-# set uji 50 lagu terhadap LRCLIB
+# contoh kecil terhadap LRCLIB (set uji buta 50 lagu disimpan di luar repo)
 cd src-tauri
-cargo run --release --example eval -- ..\eval\songs.json hasil.json
+cargo run --release --example eval -- ..\eval\sample.json hasil.json
 ```
 
-Log waktu hanya aktif kalau `LARIK_TIMING_LOG` diisi. Baris tepat setelah seek tidak dihitung. Log ini mengukur kapan Larik menggambar baris, tidak kapan suara terdengar. Karena itu offset tetap perlu untuk keterlambatan tetap dari pemutar.
+Log waktu hanya aktif kalau `LARIK_TIMING_LOG` diisi. Yang dihitung hanya baris yang dimunculkan timer, yaitu pindah tepat satu baris maju. Baris yang muncul karena jeda atau lanjut putar, tampil atau sembunyi, geser offset, seek, ganti pengaturan, atau baris pertama lagu tidak dihitung, dan skrip menyebutkan jumlahnya. Pengukuran jaringan hanya melihat koneksi TCP yang dicuplik tiap 5 detik, jadi koneksi singkat dan UDP/QUIC tidak terlihat. Log ini mengukur kapan Larik menggambar baris, tidak kapan suara terdengar. Karena itu offset tetap perlu untuk keterlambatan tetap dari pemutar.
 
 ## Batasan
 
@@ -95,7 +95,7 @@ Installer ada di `src-tauri\target\release\bundle\nsis\`. Untuk menjalankan uji:
 | `Win+Alt+O` | Buka pengaturan |
 | `Ctrl` + seret | Geser strip, posisinya diingat |
 
-Ikon tray menyediakan tampilkan atau sembunyikan, ukuran teks (kecil 18 px, sedang 22 px, besar 28 px), kembalikan posisi ke bawah tengah, mulai saat Windows menyala, dan keluar. Offset per aplikasi untuk keterlambatan tetap ada di pengaturan.
+Ikon tray menyediakan tampilkan atau sembunyikan, ukuran teks (kecil 18 px, sedang 22 px, besar 28 px), kembalikan posisi ke bawah tengah, mulai saat Windows menyala, Pengaturan, dan keluar. Offset per aplikasi untuk keterlambatan tetap ada di pengaturan.
 
 ## Privasi
 
@@ -135,19 +135,19 @@ All numbers come from a release build (`npm run tauri build`) playing one song f
 
 | Item | Target | Result | Meaning |
 |---|---|---|---|
-| Mean offset between a line appearing and its LRC time | under 150 ms | TODO-ANGKA ms | Mean of the absolute offset, from the timing log |
+| Mean offset between a line appearing and its LRC time | under 150 ms | TODO-ANGKA ms | Mean of the absolute offset over lines the timer put on screen, from the timing log |
 | p95 offset | under 300 ms | TODO-ANGKA ms | 95% of lines appear with this offset or less |
 | CPU while a song plays | mean under 1% | TODO-ANGKA % | Percent of all logical cores (as in Task Manager). Percent of one core: TODO-ANGKA % |
-| RAM of all processes (private bytes) | under 80 MB | TODO-ANGKA MB | Larik plus all its WebView2 processes |
-| RAM of all processes (working set) | no target | TODO-ANGKA MB | Larger because it counts shared pages |
-| Installer size | under 15 MB | 1.75 MB (1,834,012 bytes) | `Larik_0.1.0_x64-setup.exe` |
+| RAM of all processes (private bytes) | under 80 MiB | TODO-ANGKA MiB | Larik plus all its WebView2 processes |
+| RAM of all processes (working set) | no target | TODO-ANGKA MiB | Larger because it counts shared pages |
+| Installer size | under 15 MiB | 1.75 MiB (1,834,012 bytes) | `Larik_0.1.0_x64-setup.exe` |
 | Wrong matches in the 50-song test set | 0 | TODO-ANGKA | Songs that received another song's lyrics |
 | Test songs that got lyrics | no target | TODO-ANGKA of 50 | The rest were not found |
-| Network destinations other than LRCLIB | 0 | TODO-ANGKA | TCP addresses seen during the measurement |
+| Network destinations other than LRCLIB | 0 | TODO-ANGKA | TCP addresses seen during the measurement (TCP only, sampled every 5 s. Short connections and UDP/QUIC are not seen) |
 
 Measured on: TODO-ANGKA. Machine: TODO-ANGKA.
 
-To measure again, use the PowerShell commands in the Indonesian section above. The timing log records when Larik draws a line, not when the sound is heard, so the per-app offset stays useful for fixed player delay.
+To measure again, use the PowerShell commands in the Indonesian section above (the 50-song blind set is kept outside the repo, `eval/sample.json` is a small example). The timing log counts only lines the timer put on screen, that is, a move forward by exactly one line. Lines shown after pause or resume, show or hide, an offset nudge, a seek, a settings change or the first line of a song are not counted, and the script reports how many were left out. The network check sees TCP connections only, sampled every 5 s, so short connections and UDP/QUIC are not seen. The timing log records when Larik draws a line, not when the sound is heard, so the per-app offset stays useful for fixed player delay.
 
 ## Limitations
 
@@ -184,7 +184,7 @@ The installer is in `src-tauri\target\release\bundle\nsis\`. To run the tests, g
 | `Win+Alt+O` | Open settings |
 | `Ctrl` + drag | Move the strip, the position is remembered |
 
-The tray icon offers show or hide, text size (small 18 px, medium 22 px, large 28 px), reset position to bottom centre, start with Windows, and quit. A per-app offset for fixed delay is in settings.
+The tray icon offers show or hide, text size (small 18 px, medium 22 px, large 28 px), reset position to bottom centre, start with Windows, Settings, and quit. A per-app offset for fixed delay is in settings.
 
 ## Privacy
 
