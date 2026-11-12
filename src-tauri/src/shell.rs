@@ -164,6 +164,7 @@ fn build_tray(app: &AppHandle, tx: &Sender<Msg>) -> tauri::Result<()> {
             }
             "settings" => open_settings(app),
             "quit" => {
+                crate::overlay::mark_exiting();
                 let _ = tx.send(Msg::Quit);
                 app.exit(0);
             }

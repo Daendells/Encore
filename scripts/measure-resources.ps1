@@ -1,7 +1,8 @@
 # Usage: powershell -File scripts\measure-resources.ps1 -Seconds 300
 # Samples larik.exe and all its child processes (WebView2) while a song is playing: memory and CPU every 5 s,
-# TCP connections every 200 ms. The RAM figure to quote is private bytes (memory the app has committed);
-# the working set is shown too, but it counts DLL pages shared with other programs.
+# TCP connections in a loop with a 200 ms pause (the mean interval actually reached is printed at the end).
+# The RAM figure to quote is private bytes (memory the app has committed); the working set is shown too,
+# but it counts DLL pages shared with other programs.
 param([int]$Seconds = 300)
 
 $interval = 5
@@ -47,9 +48,21 @@ Add-Lrclib
 $start = Get-Date
 $end = $start.AddSeconds($Seconds)
 $nextSample = $start
+$tree = @()
+$kinds = @{}
+$treeAt = [datetime]::MinValue
+$polls = 0
+$firstPoll = $null
+$lastPoll = $null
 while ((Get-Date) -lt $end) {
-    $tree = @(Get-Tree)
     $now = Get-Date
+    # Looking up the process tree is slow, so it is done once a second; connections are polled in between.
+    if (($now - $treeAt).TotalSeconds -ge 1) {
+        $tree = @(Get-Tree)
+        $kinds = @{}
+        foreach ($t in $tree) { $kinds[$t.Id] = $t.Kind }
+        $treeAt = $now
+    }
     if ($now -ge $nextSample -and $tree.Count) {
         $nextSample = $now.AddSeconds($interval)
         # CPU delta per PID: a process that appears or exits during the run adds only its own time
@@ -85,14 +98,16 @@ while ((Get-Date) -lt $end) {
         $prev = $cur
         $prevTime = $now
     }
-    $kinds = @{}
-    foreach ($t in $tree) { $kinds[$t.Id] = $t.Kind }
+    $pollAt = Get-Date
+    if (-not $firstPoll) { $firstPoll = $pollAt }
+    $lastPoll = $pollAt
+    $polls++
     Get-NetTCPConnection -ErrorAction SilentlyContinue |
-        Where-Object { $kinds.ContainsKey([int]$_.OwningProcess) -and $_.RemoteAddress -notin @('0.0.0.0', '::', '127.0.0.1', '::1') } |
+        Where-Object { $kinds.ContainsKey([int]$_.OwningProcess) -and $_.RemoteAddress -notin @("0.0.0.0", "::", "127.0.0.1", "::1") } |
         ForEach-Object {
             $key = "$($_.RemoteAddress):$($_.RemotePort)"
             if (-not $remotes.ContainsKey($key)) {
-                $remotes[$key] = @{ Address = $_.RemoteAddress; Seconds = [int]($now - $start).TotalSeconds; Kind = $kinds[[int]$_.OwningProcess] }
+                $remotes[$key] = @{ Address = $_.RemoteAddress; Seconds = [int]($pollAt - $start).TotalSeconds; Kind = $kinds[[int]$_.OwningProcess] }
             }
         }
     Start-Sleep -Milliseconds $pollMs
@@ -118,7 +133,8 @@ foreach ($k in ($perKind.Keys | Sort-Object)) {
 "`nRemote TCP endpoints of the process tree seen during the run:"
 Add-Lrclib
 $lrList = @($lr.Keys)
-"Method: TCP connections only, sampled every $pollMs ms. Very short connections and UDP/QUIC are not seen."
+$meanMs = if ($polls -gt 1) { ($lastPoll - $firstPoll).TotalMilliseconds / ($polls - 1) } else { 0 }
+"Method: TCP connections only, {0} polls, mean interval {1:N0} ms. Very short connections and UDP/QUIC are not seen." -f $polls, $meanMs
 "lrclib.net resolved at the start and end of the run to: $($lrList -join ', ')"
 if (-not $remotes.Count) { "(none)" }
 foreach ($k in ($remotes.Keys | Sort-Object { $remotes[$_].Seconds })) {

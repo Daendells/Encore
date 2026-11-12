@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use tauri::{AppHandle, Emitter, Manager, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewWindowBuilder, WindowEvent};
 
 pub mod cache;
 pub mod clock;
@@ -182,6 +182,12 @@ pub fn run() {
             })?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Larik");
+        .build(tauri::generate_context!())
+        .expect("error while building Larik")
+        .run(|_, event| {
+            // Whatever ends the app (tray Quit, an exit request, logoff), WebView2 going away after it is no failure.
+            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+                overlay::mark_exiting();
+            }
+        });
 }

@@ -240,44 +240,67 @@ fn save_position(app: &AppHandle, pos: (i32, i32)) {
 const RESTART_GAP_SECS: u64 = 30;
 /// File in the app data folder holding the time (Unix seconds) of the last restart after a failure.
 const RESTART_MARKER: &str = "restarted-after-failure";
+/// Set once the app is on its way out (tray Quit, exit request): WebView2 dying then is not a failure.
+static EXITING: AtomicBool = AtomicBool::new(false);
 
+pub fn mark_exiting() {
+    EXITING.store(true, Ordering::SeqCst);
+}
+
+/// A marker from the future (the clock went back) does not block a restart: it must not turn recovery off for good.
 fn restart_allowed(last: Option<u64>, now: u64) -> bool {
-    last.is_none_or(|t| now.saturating_sub(t) >= RESTART_GAP_SECS)
+    last.is_none_or(|t| now < t || now - t >= RESTART_GAP_SECS)
 }
 
 /// WebView2 runs in a single process (see `WEBVIEW_ARGS`), so a failure leaves the strip blank for good.
-/// On any WebView2 process failure the app logs it and restarts itself, unless it already did so
-/// less than 30 s ago: then it only logs.
+/// When the browser or the renderer process exits, the app logs it and restarts itself, unless it is
+/// quitting, or it already restarted less than 30 s ago, or it cannot record the restart: then it only logs.
+/// The restart is recorded before it happens, so a failure that repeats can never restart in a loop.
 pub fn restart_on_webview_failure(app: &AppHandle, window: &WebviewWindow) {
-    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PROCESS_FAILED_KIND;
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_PROCESS_FAILED_KIND, COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
+    };
     let app = app.clone();
-    let _ = window.with_webview(move |webview| unsafe {
-        let Ok(core) = webview.controller().CoreWebView2() else { return };
-        let mut token = 0;
+    let _ = window.with_webview(move |webview| {
+        let Ok(core) = (unsafe { webview.controller().CoreWebView2() }) else {
+            eprintln!("larik: cannot watch WebView2 for failures, it will not be restarted");
+            return;
+        };
         let handler = webview2_com::ProcessFailedEventHandler::create(Box::new(move |_, args| {
             let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
             if let Some(args) = args {
-                let _ = args.ProcessFailedKind(&mut kind);
+                let _ = unsafe { args.ProcessFailedKind(&mut kind) };
             }
-            let marker = app.path().app_local_data_dir().ok().map(|dir| dir.join(RESTART_MARKER));
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |d| d.as_secs());
-            let last = marker
-                .as_ref()
-                .and_then(|m| std::fs::read_to_string(m).ok())
-                .and_then(|text| text.trim().parse::<u64>().ok());
-            if restart_allowed(last, now) {
+            let fatal = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+                || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED;
+            if !fatal {
+                eprintln!("larik: WebView2 process failed (kind {}), not restarting for this kind", kind.0);
+                return Ok(());
+            }
+            if EXITING.load(Ordering::SeqCst) {
+                return Ok(());
+            }
+            let Some(marker) = app.path().app_local_data_dir().ok().map(|dir| dir.join(RESTART_MARKER)) else {
+                eprintln!("larik: WebView2 process failed (kind {}), no data folder to record a restart", kind.0);
+                return Ok(());
+            };
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let last = std::fs::read_to_string(&marker).ok().and_then(|text| text.trim().parse::<u64>().ok());
+            if !restart_allowed(last, now) {
+                eprintln!("larik: WebView2 process failed (kind {}), not restarting again so soon", kind.0);
+            } else if std::fs::write(&marker, now.to_string()).is_err() {
+                eprintln!("larik: WebView2 process failed (kind {}), cannot record a restart, not restarting", kind.0);
+            } else {
                 eprintln!("larik: WebView2 process failed (kind {}), restarting", kind.0);
-                if let Some(m) = &marker {
-                    let _ = std::fs::write(m, now.to_string());
-                }
                 app.restart();
             }
-            eprintln!("larik: WebView2 process failed (kind {}), not restarting again so soon", kind.0);
             Ok(())
         }));
-        let _ = core.add_ProcessFailed(&handler, &mut token);
+        let mut token = 0;
+        if let Err(e) = unsafe { core.add_ProcessFailed(&handler, &mut token) } {
+            eprintln!("larik: cannot watch WebView2 for failures, it will not be restarted: {e}");
+        }
     });
 }
 
@@ -289,10 +312,10 @@ fn memory_level(window: &WebviewWindow, low: bool) {
     use windows::core::Interface;
     let level =
         if low { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
-    let _ = window.with_webview(move |webview| unsafe {
-        if let Ok(core) = webview.controller().CoreWebView2() {
+    let _ = window.with_webview(move |webview| {
+        if let Ok(core) = unsafe { webview.controller().CoreWebView2() } {
             if let Ok(core) = core.cast::<ICoreWebView2_19>() {
-                let _ = core.SetMemoryUsageTargetLevel(level);
+                let _ = unsafe { core.SetMemoryUsageTargetLevel(level) };
             }
         }
     });
@@ -487,11 +510,11 @@ mod tests {
         assert!(!restart_allowed(Some(1000), 1000));
         assert!(!restart_allowed(Some(1000), 1029));
         assert!(restart_allowed(Some(1000), 1030));
-        // A clock that went back is not a reason to restart.
-        assert!(!restart_allowed(Some(1000), 900));
+        // A marker from the future (the clock went back) must not turn recovery off.
+        assert!(restart_allowed(Some(1000), 900));
     }
 
-    const SCREEN: Rect =Rect { x: 0, y: 0, w: 1920, h: 1080 };
+    const SCREEN: Rect = Rect { x: 0, y: 0, w: 1920, h: 1080 };
 
     #[test]
     fn default_rect_is_60_percent_centred_above_taskbar() {
