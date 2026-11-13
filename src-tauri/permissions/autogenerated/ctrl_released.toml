@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ctrl-released"
+description = "Enables the ctrl_released command without any pre-configured scope."
+commands.allow = ["ctrl_released"]
+
+[[permission]]
+identifier = "deny-ctrl-released"
+description = "Denies the ctrl_released command without any pre-configured scope."
+commands.deny = ["ctrl_released"]

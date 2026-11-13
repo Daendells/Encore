@@ -2,5 +2,5 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "windows": ["overlay"],
-  "permissions": ["core:event:default", "core:window:allow-start-dragging", "allow-shown"]
+  "permissions": ["core:event:default", "core:window:allow-start-dragging", "allow-shown", "allow-ctrl-released"]
 }

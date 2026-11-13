@@ -107,6 +107,14 @@ function showInfo(ui) {
   showingLines = false;
 }
 
+/** Nothing of the last song stays on the plate for the next time the window is shown. */
+function clearPlate() {
+  plate.classList.remove("slide");
+  plate.hidden = true;
+  for (const row of Object.values(rows)) setRow(row, null);
+  showingLines = false;
+}
+
 function showToast(ui) {
   toast.classList.remove("go");
   toast.textContent = ui.text;
@@ -125,6 +133,7 @@ listen("ui", (event) => {
   if (ui.kind === "lines") showLines(ui);
   else if (ui.kind === "info") showInfo(ui);
   else if (ui.kind === "toast") showToast(ui);
+  else if (ui.kind === "clear") clearPlate();
 });
 
 listen("style", (event) => {
@@ -135,8 +144,16 @@ listen("style", (event) => {
 // While Ctrl is held the window takes mouse input and the plate can be dragged.
 listen("drag", (event) => document.body.classList.toggle("drag", event.payload.on === true));
 
+// A key-up that never reached Larik must not leave the strip clickable: a mouse event without Ctrl ends the drag state.
+function ctrlGone(event) {
+  if (event.ctrlKey || !document.body.classList.contains("drag")) return false;
+  invoke("ctrl_released").catch(() => {});
+  return true;
+}
+
+document.addEventListener("mousemove", ctrlGone);
 document.addEventListener("mousedown", (event) => {
-  if (event.button === 0 && document.body.classList.contains("drag")) {
+  if (!ctrlGone(event) && event.button === 0 && document.body.classList.contains("drag")) {
     window.__TAURI__.window.getCurrentWindow().startDragging().catch(() => {});
   }
 });

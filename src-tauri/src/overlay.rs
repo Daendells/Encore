@@ -342,7 +342,7 @@ pub fn set_visible(app: &AppHandle, visible: bool) {
 
 /// Ctrl down makes the strip clickable and draggable; Ctrl up makes it click-through again and,
 /// if it was dragged, remembers where it is.
-fn set_ctrl(app: &AppHandle, down: bool) {
+pub(crate) fn set_ctrl(app: &AppHandle, down: bool) {
     // The raw-input thread and the engine thread both come here: one at a time, start to end.
     let _one_at_a_time = SET_CTRL.lock().unwrap_or_else(PoisonError::into_inner);
     if CTRL.swap(down, Ordering::SeqCst) == down {

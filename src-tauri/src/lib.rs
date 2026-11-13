@@ -106,6 +106,12 @@ fn shown(seq: u64, tx: tauri::State<Sender<Msg>>) {
     let _ = tx.send(Msg::Shown { seq });
 }
 
+/// The overlay saw a mouse event without Ctrl while it is clickable: the key-up never reached the Raw Input window.
+#[tauri::command]
+fn ctrl_released(app: AppHandle) {
+    overlay::set_ctrl(&app, false);
+}
+
 pub fn run() {
     let (tx, rx) = mpsc::channel();
     let engine_tx = tx.clone();
@@ -121,7 +127,7 @@ pub fn run() {
         .plugin(shell::shortcut_plugin(shortcut_tx))
         .manage(tx)
         .manage(shell::Shared::new(i18n::detect()))
-        .invoke_handler(tauri::generate_handler![shown, shell::get_settings, shell::set_settings, shell::strings])
+        .invoke_handler(tauri::generate_handler![shown, ctrl_released, shell::get_settings, shell::set_settings, shell::strings])
         .setup(move |app| {
             let timing = timing_log::TimingLog::from_env();
             let dir = app.path().app_local_data_dir()?;
