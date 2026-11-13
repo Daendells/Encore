@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::cache::Cache;
 use crate::clock::{self, Clock};
-use crate::lrc::Line;
+use crate::lrc::{Line, LONG_GAP_MS, NOTE_AFTER_MS};
 use crate::lyrics::Lyrics;
 use crate::matcher::Track;
 use crate::schedule::{index_at, next_start_after};
@@ -24,6 +24,8 @@ const CARD_MS: f64 = 3_000.0;
 const KEEP_DEADLINE_MS: f64 = 15.0;
 /// A track whose length differs by more than this from the one we looked up is another track.
 const DURATION_TOLERANCE_MS: u32 = 2_000;
+/// After a timeline that does not fit the lyrics, the next read (or a title event) decides what the track is.
+const CONFIRM_MS: f64 = 600.0;
 const LAST_WORD_MS: f64 = 500.0;
 const NOTE: &str = "♪";
 
@@ -53,6 +55,8 @@ pub enum Ui {
     },
     Info { title: String, artist: String },
     Toast { text: String },
+    /// The plate is emptied, so that the next time the window is shown it holds nothing of the old song.
+    Clear,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
@@ -124,6 +128,8 @@ pub struct Engine {
     read_at: Option<f64>,
     line_at: Option<f64>,
     card_at: Option<f64>,
+    /// While set the strip stays empty, and this is when the confirming read happens.
+    hold_until: Option<f64>,
 }
 
 impl Engine {
@@ -145,6 +151,7 @@ impl Engine {
             read_at: None,
             line_at: None,
             card_at: None,
+            hold_until: None,
         }
     }
 
@@ -159,7 +166,7 @@ impl Engine {
             self.handle(msg, host);
         }
         self.fire_due(host);
-        [self.read_at, self.line_at, self.card_at].into_iter().flatten().reduce(f64::min)
+        [self.read_at, self.line_at, self.card_at, self.hold_until].into_iter().flatten().reduce(f64::min)
     }
 
     fn handle(&mut self, msg: Msg, host: &mut dyn Host) {
@@ -185,7 +192,7 @@ impl Engine {
     /// Runs whatever has come due: the SMTC read, the end of the card, the line change.
     fn fire_due(&mut self, host: &mut dyn Host) {
         let due = |at: Option<f64>, host: &dyn Host| at.is_some_and(|t| host.now_mono_ms() >= t);
-        if due(self.read_at, host) {
+        if due(self.read_at, host) || due(self.hold_until, host) {
             self.read_at = None;
             self.read(host);
         }
@@ -212,11 +219,15 @@ impl Engine {
         if s.title.trim().is_empty() || duration_ms == 0 {
             return self.forget(host);
         }
-        let same = self.cur.as_ref().is_some_and(|c| {
-            c.track.title == s.title
-                && c.track.artist == s.artist
-                && c.track.duration_ms.abs_diff(duration_ms) <= DURATION_TOLERANCE_MS
-        });
+        let same_song = self.cur.as_ref().is_some_and(|c| c.track.title == s.title && c.track.artist == s.artist);
+        let same = same_song
+            && self.cur.as_ref().is_some_and(|c| c.track.duration_ms.abs_diff(duration_ms) <= DURATION_TOLERANCE_MS);
+        let confirming = self.hold_until.take_if(|t| now >= *t).is_some();
+        // The title stayed but the length changed: Spotify sends the next timeline before the next title. Wait for
+        // the title, and take it for a new track only when it still has not come.
+        if same_song && !same && !confirming {
+            return self.hold(now, host);
+        }
         if !same {
             self.forget(host);
         }
@@ -240,6 +251,11 @@ impl Engine {
         let idx = self.index(now);
         let start = idx.map(|i| self.lines()[i].start_ms);
         self.log_row("sync", host, idx, start, &extra);
+        // A jump to the very start is also what the next song looks like when its title is still the old one.
+        let to_start = matches!(sync, clock::Sync::Seek { .. }) && self.clock.position_ms(now) < clock::SEEK_THRESHOLD_MS;
+        if same && to_start && !confirming && self.hold_until.is_none() {
+            return self.hold(now, host);
+        }
 
         match fresh {
             Some((key, track)) => match self.cache.get(&track, wall_secs(wall)) {
@@ -250,9 +266,19 @@ impl Engine {
         }
     }
 
+    /// Empties the strip until `CONFIRM_MS` have passed and the track has been read again.
+    fn hold(&mut self, now: f64, host: &dyn Host) {
+        self.hold_until = Some(now + CONFIRM_MS);
+        self.told = None;
+        self.line_at = None;
+        self.card_at = None;
+        self.apply_visibility(host);
+    }
+
     /// No track (yet): drop the lyrics and the timers and hide the overlay.
     fn forget(&mut self, host: &dyn Host) {
         self.cur = None;
+        self.hold_until = None;
         self.clock.reset();
         self.told = None;
         self.line_at = None;
@@ -279,7 +305,14 @@ impl Engine {
 
     fn accept(&mut self, lyrics: Lyrics, host: &dyn Host) {
         let lines = match lyrics {
-            Lyrics::Synced(lines) if !lines.is_empty() => lines,
+            Lyrics::Synced(mut lines) if !lines.is_empty() => {
+                // Like a long gap inside the song: a last line that the track outlasts gets a break after it.
+                let duration_ms = self.cur.as_ref().map_or(0, |c| c.track.duration_ms);
+                if let Some(last) = lines.last().filter(|l| !l.text.is_empty() && duration_ms.saturating_sub(l.start_ms) > LONG_GAP_MS) {
+                    lines.push(Line { start_ms: last.start_ms + NOTE_AFTER_MS, text: String::new(), words: vec![] });
+                }
+                lines
+            }
             Lyrics::Instrumental => vec![Line { start_ms: 0, text: String::new(), words: vec![] }],
             _ => return self.show_card(host),
         };
@@ -337,9 +370,13 @@ impl Engine {
             Some(Content::Card) => self.card_at.is_some(),
             _ => false,
         };
-        let want = self.settings.visible && content;
+        let want = self.settings.visible && content && self.hold_until.is_none();
         if want != self.shown {
             self.shown = want;
+            if !want {
+                // Before the window goes: its next show must not flash the last line of this song.
+                host.emit(&Ui::Clear);
+            }
             host.set_overlay_visible(want);
         }
     }
@@ -367,7 +404,7 @@ impl Engine {
 
     /// Tells the overlay what to draw, when that has changed or `how` forces it, then arms the line timer.
     fn render(&mut self, host: &dyn Host, how: How) {
-        if self.lines().is_empty() || !self.settings.visible {
+        if self.lines().is_empty() || !self.settings.visible || self.hold_until.is_some() {
             // Nothing to draw, or the user hid the strip: say nothing now, and everything when it is back.
             self.told = None;
             self.line_at = None;
@@ -741,18 +778,76 @@ mod tests {
         let old_key = r.h.last_key();
         assert_eq!((r.h.out().len(), r.h.vis()), (1, vec![true]));
 
-        // The timeline of the next track arrives before its title.
+        // The timeline of the next track arrives before its title: the strip empties, and nothing is looked up yet.
         r.advance(1_000.0);
-        assert_eq!(r.poll(snap("Song", 100.0, true, 188_000.0)), None);
-        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![false]));
-        assert_eq!(r.h.fetched(), 2);
-        assert_eq!(r.h.fetches.borrow()[1].1.duration_ms, 188_000);
+        assert_eq!(r.poll(snap("Song", 100.0, true, 188_000.0)), Some(r.h.mono + CONFIRM_MS));
+        assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![Ui::Clear], vec![false], 1));
 
         // The old lookup finishing now must not light the new timeline either.
         r.step(Some(Msg::Lyrics { key: old_key, result: Ok(Lyrics::Synced(song())) }));
-        r.advance(500.0);
-        r.poll(snap("Song", 700.0, true, 188_000.0));
+        r.advance(300.0);
+        r.poll(snap("Song", 500.0, true, 188_000.0));
+        assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![], vec![], 1));
+
+        // The title never changed: after the wait it is another track of the same name and is looked up.
+        r.advance(CONFIRM_MS);
+        assert_eq!(r.step(None), None);
         assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![], vec![], 2));
+        assert_eq!(r.h.fetches.borrow()[1].1.duration_ms, 188_000);
+    }
+
+    #[test]
+    fn spotify_order_shows_no_line_of_the_old_song_and_fetches_once() {
+        let mut r = Rig::showing(song(), 6_000.0);
+        r.advance(10_000.0);
+        r.step(None);
+        r.h.out();
+        // The next song's timeline with the old title, then its title 475 ms later.
+        r.poll(snap("Song", 0.0, true, 188_000.0));
+        assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![Ui::Clear], vec![false], 1));
+        r.advance(415.0);
+        r.poll(snap("Next", 475.0, true, 188_000.0));
+        assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![], vec![], 2));
+        let (_, fetched) = r.h.fetches.borrow()[1].clone();
+        assert_eq!((fetched.title.as_str(), fetched.duration_ms), ("Next", 188_000));
+
+        // The confirming read has nothing left to decide.
+        r.advance(CONFIRM_MS);
+        r.h.snap = snap("Next", 1_100.0, true, 188_000.0);
+        assert_eq!(r.step(None), None);
+        assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![], vec![], 2));
+        r.lyrics(Ok(Lyrics::Synced(vec![ln(0, "next one"), ln(4_000, "next two")])));
+        assert_eq!(r.h.out(), [lines(3, None, "next one", Some("next two"), false, true)]);
+    }
+
+    #[test]
+    fn restart_of_the_same_song_shows_lines_after_the_confirming_read() {
+        let mut r = Rig::showing(song(), 100_000.0);
+        r.advance(1_000.0);
+        // A jump to the very start: maybe the next song, maybe a restart. Empty until the next read.
+        let deadline = r.poll(play("Song", 0.0));
+        assert_eq!(deadline, Some(r.h.mono + CONFIRM_MS));
+        assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![Ui::Clear], vec![false], 1));
+
+        // Events inside the wait change nothing.
+        r.advance(200.0);
+        assert_eq!(r.poll(play("Song", 260.0)), deadline);
+        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![]));
+
+        r.advance(CONFIRM_MS);
+        r.h.snap = play("Song", 1_500.0);
+        r.step(None);
+        assert_eq!(r.h.fetched(), 1);
+        assert_eq!(r.h.vis(), [true]);
+        assert_eq!(r.h.out(), [lines(2, None, "one", Some("two"), false, true)]);
+    }
+
+    #[test]
+    fn a_seek_away_from_the_start_shows_at_once() {
+        let mut r = Rig::showing(song(), 100_000.0);
+        r.advance(1_000.0);
+        r.poll(play("Song", 6_000.0));
+        assert_eq!(r.h.out(), [lines(2, Some("one"), "two", Some("three"), false, true)]);
     }
 
     #[test]
@@ -764,8 +859,27 @@ mod tests {
         r.poll(snap("Song", 2_200.0, true, 208_900.0));
         assert_eq!(r.h.fetched(), 1);
         assert_eq!(r.h.vis(), [true]);
+        // 2.1 s off: another track, once the confirming read agrees.
         r.poll(snap("Song", 2_300.0, true, 209_100.0));
+        assert_eq!(r.h.fetched(), 1);
+        r.advance(CONFIRM_MS);
+        r.step(None);
         assert_eq!(r.h.fetched(), 2);
+    }
+
+    #[test]
+    fn the_last_line_is_followed_by_a_break_when_the_track_goes_on() {
+        let mut r = Rig::new();
+        r.poll(play("Song", 14_000.0));
+        // "four" starts at 13 s and the track is 200 s long: the break comes 10 s after it, at 23 s.
+        assert_eq!(r.lyrics(Ok(Lyrics::Synced(song()))), Some(1_060.0 + 9_000.0 + 1.0));
+        assert_eq!(r.h.out(), [lines(1, Some("three"), "four", Some("♪"), false, true)]);
+
+        // The track ends 7 s after its last line: no break.
+        let mut r = Rig::new();
+        r.poll(snap("Song", 14_000.0, true, 20_000.0));
+        assert_eq!(r.lyrics(Ok(Lyrics::Synced(song()))), None);
+        assert_eq!(r.h.out(), [lines(1, Some("three"), "four", None, false, true)]);
     }
 
     #[test]
@@ -787,7 +901,7 @@ mod tests {
         assert!(r.h.vis().is_empty());
         r.h.mono = 4_060.0;
         assert_eq!(r.step(None), None);
-        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![false]));
+        assert_eq!((r.h.out(), r.h.vis()), (vec![Ui::Clear], vec![false]));
     }
 
     #[test]
@@ -898,7 +1012,7 @@ mod tests {
     fn hidden_by_user_emits_nothing_and_has_no_deadline() {
         let mut r = Rig::showing(song(), 2_000.0);
         assert_eq!(r.step(Some(Msg::SetVisible(false))), None);
-        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![false]));
+        assert_eq!((r.h.out(), r.h.vis()), (vec![Ui::Clear], vec![false]));
         assert!(!r.e.store.load().visible);
 
         r.advance(1_000.0);
@@ -925,7 +1039,7 @@ mod tests {
         r.step(Some(Msg::ToggleVisible));
         r.advance(1_000.0);
         r.poll(play("Song", 7_000.0));
-        assert!(r.h.out().is_empty());
+        assert_eq!(r.h.out(), [Ui::Clear]);
 
         let deadline = r.step(Some(Msg::ToggleVisible));
         assert!(r.e.store.load().visible);
@@ -998,11 +1112,11 @@ mod tests {
         let mut closed = play("Song", 2_000.0).unwrap();
         closed.status = Status::Closed;
         assert_eq!(r.poll(Some(closed)), None);
-        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![false]));
+        assert_eq!((r.h.out(), r.h.vis()), (vec![Ui::Clear], vec![false]));
 
         let mut r = Rig::showing(song(), 2_000.0);
         assert_eq!(r.poll(None), None);
-        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![false]));
+        assert_eq!((r.h.out(), r.h.vis()), (vec![Ui::Clear], vec![false]));
         let mut stopped = play("Song", 2_000.0).unwrap();
         stopped.status = Status::Stopped;
         r.poll(Some(stopped));
@@ -1088,9 +1202,11 @@ mod tests {
         let out = r.h.out();
         assert!(matches!(&out[..], [Ui::Lines { words: None, lit: true, .. }]), "{out:?}");
 
-        // The last word of the last line gets 500 ms of lyric time.
+        // The last word of the last line, when the track ends soon after it, gets 500 ms of lyric time.
         let mut r = Rig::new();
-        r.poll(at_double_speed(4_600.0));
+        let mut short = at_double_speed(4_600.0).unwrap();
+        short.report.duration_ms = 10_000.0;
+        r.poll(Some(short));
         r.lyrics(Ok(Lyrics::Synced(vec![sung])));
         let Ui::Lines { words: Some(words), .. } = r.h.out().remove(0) else { panic!("no words") };
         assert_eq!(words[2], uw("world", 300, 250));
