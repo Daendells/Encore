@@ -63,6 +63,7 @@ function showLines(ui) {
   plate.hidden = false;
   setRow(rows.prev, ui.prev);
   setRow(rows.next, ui.next);
+  rows.cur.hidden = false;
   rows.cur.classList.toggle("dim", !ui.lit);
   let pending = [];
   if (ui.words && ui.words.length) pending = setWords(ui.words);
