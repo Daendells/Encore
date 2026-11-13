@@ -7,6 +7,11 @@ let text = {};
 let saveTimer = null;
 // What the Rust side says each style sets; the page never repeats the numbers.
 let presets = [];
+// The offsets as last saved or loaded, sent again when the ones typed in are not valid.
+let savedOffsets = {};
+// Set when the user picks a place (or a style sets one); only then is a place sent, so a Ctrl drag made after the
+// page loaded is not undone by the next slider move.
+let placeChosen = false;
 
 function showError(on) {
   const box = $("error");
@@ -15,6 +20,7 @@ function showError(on) {
 }
 
 function renderOffsets(apps) {
+  savedOffsets = Object.fromEntries(apps.filter((a) => a.offset_ms !== 0).map((a) => [a.id, a.offset_ms]));
   $("offsets-empty").hidden = apps.length > 0;
   $("offsets").replaceChildren(
     ...apps.map((app, i) => {
@@ -86,9 +92,15 @@ function checked(name) {
 }
 
 function showSliders() {
-  $("size-out").textContent = `${$("size").value} ${text["unit.px"] ?? ""}`;
-  $("plate-out").textContent = `${$("plate").value}%`;
-  $("width-out").textContent = `${$("width").value}%`;
+  const shown = {
+    size: `${$("size").value} ${text["unit.px"] ?? ""}`,
+    plate: `${$("plate").value}%`,
+    width: `${$("width").value}%`,
+  };
+  for (const [id, value] of Object.entries(shown)) {
+    $(`${id}-out`).textContent = value;
+    $(id).setAttribute("aria-valuetext", value); // the value with its unit, for screen readers
+  }
 }
 
 /** Puts the display values into the controls. */
@@ -152,25 +164,28 @@ async function load() {
   $("autostart").checked = await invoke("plugin:autostart|is_enabled").catch(() => false);
 }
 
-/** Sends the form as it is. The server checks every limit again; a refusal puts the saved values back. */
+/** Sends the form as it is. The server checks every limit again; a refusal puts the saved values back.
+ *  An offset that is not valid is not sent (the saved ones go instead) and does not hold back the display settings. */
 async function save() {
-  const offsets = {};
+  let offsets = {};
+  let offsetsValid = true;
   for (const li of $("offsets").children) {
     const input = li.querySelector("input");
     if (!input.checkValidity()) {
-      showError(true);
-      return;
+      offsetsValid = false;
+      break;
     }
     const ms = Math.round(Number(input.value) || 0);
     if (ms !== 0) offsets[li.dataset.app] = ms;
   }
+  if (!offsetsValid) offsets = savedOffsets;
   try {
     const preset = await invoke("set_settings", {
       input: {
         font_px: Number($("size").value),
         hide_from_capture: $("capture").checked,
         app_offsets_ms: offsets,
-        placement: $("place").value,
+        placement: placeChosen ? $("place").value : null,
         lines: Number(checked("lines")),
         plate_opacity: Number($("plate").value),
         max_width_pct: Number($("width").value),
@@ -178,7 +193,9 @@ async function save() {
       },
     });
     markPreset(preset);
-    showError(false);
+    placeChosen = false;
+    if (offsetsValid) savedOffsets = offsets;
+    showError(!offsetsValid);
   } catch {
     showError(true);
     await load();
@@ -197,18 +214,23 @@ for (const id of ["size", "plate", "width"]) {
     save();
   });
 }
-$("place").addEventListener("change", save);
+$("place").addEventListener("change", () => {
+  placeChosen = true;
+  save();
+});
 $("accents").addEventListener("change", save);
 for (const input of document.getElementsByName("lines")) input.addEventListener("change", save);
 // A style sets every display value at once, in one save.
 $("presets").addEventListener("change", () => {
   const look = presets.find((p) => p.id === checked("preset"));
   if (look) fillLook(look);
+  placeChosen = true;
   save();
 });
 $("reset-look").addEventListener("click", () => {
   const base = presets.find((p) => p.id === "default");
   if (base) fillLook(base);
+  placeChosen = true;
   save();
 });
 $("capture").addEventListener("change", save);

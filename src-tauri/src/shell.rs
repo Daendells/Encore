@@ -247,6 +247,12 @@ pub fn shortcut_plugin(tx: Sender<Msg>) -> tauri::plugin::TauriPlugin<Wry> {
         .build()
 }
 
+/// Height of the settings window in logical pixels: 720, or less on a small screen so that the title bar stays
+/// on it (about 40 px go to the title bar and frame). The page scrolls when the content is taller.
+fn settings_window_height(work_height_px: u32, scale: f64) -> f64 {
+    (f64::from(work_height_px) / scale - 40.0).clamp(400.0, 720.0)
+}
+
 /// Shows the settings window, creating it if it is not open. Built on its own thread because a window
 /// cannot be created from inside the event handler that asked for it.
 pub fn open_settings(app: &AppHandle) {
@@ -258,9 +264,14 @@ pub fn open_settings(app: &AppHandle) {
             let _ = window.set_focus();
             return;
         }
+        let height = app
+            .primary_monitor()
+            .ok()
+            .flatten()
+            .map_or(720.0, |m| settings_window_height(m.work_area().size.height, m.scale_factor()));
         let built = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
             .title(t(lang(&app), "settings.title"))
-            .inner_size(440.0, 720.0)
+            .inner_size(440.0, height)
             .center()
             .additional_browser_args(crate::WEBVIEW_ARGS)
             .build();
@@ -329,8 +340,10 @@ pub struct SettingsInput {
     font_px: u32,
     hide_from_capture: bool,
     app_offsets_ms: BTreeMap<String, i32>,
-    /// A word outside the allowed set does not deserialize, so it never gets this far.
-    placement: Placement,
+    /// A word outside the allowed set does not deserialize, so it never gets this far. `None` keeps the place as it
+    /// is: the page sends one only when the user chose it, so it cannot undo a Ctrl drag made after the page loaded.
+    #[serde(default)]
+    placement: Option<Placement>,
     lines: u32,
     plate_opacity: u32,
     max_width_pct: u32,
@@ -374,7 +387,9 @@ impl SettingsInput {
         settings.plate_opacity = self.plate_opacity;
         settings.max_width_pct = self.max_width_pct;
         settings.accent = self.accent;
-        settings.set_placement(self.placement);
+        if let Some(placement) = self.placement {
+            settings.set_placement(placement);
+        }
         settings.hide_from_capture = self.hide_from_capture;
         settings.app_offsets_ms = self.app_offsets_ms.into_iter().filter(|(_, ms)| *ms != 0).collect();
         Ok(())
@@ -439,12 +454,20 @@ mod tests {
             font_px,
             hide_from_capture: false,
             app_offsets_ms: apps.iter().map(|(id, ms)| (id.to_string(), *ms)).collect(),
-            placement: Placement::BottomCenter,
+            placement: None,
             lines: 3,
             plate_opacity: 35,
             max_width_pct: 60,
             accent: Accent::White,
         }
+    }
+
+    #[test]
+    fn the_settings_window_fits_the_screen() {
+        // A work area of 720 px at 125% is 576 logical px; the title bar and the frame take about 40 of them.
+        assert_eq!(settings_window_height(720, 1.25), 536.0);
+        assert_eq!(settings_window_height(1040, 1.0), 720.0, "a tall screen keeps the full height");
+        assert_eq!(settings_window_height(300, 1.0), 400.0, "never smaller than a usable minimum");
     }
 
     fn with(change: impl FnOnce(&mut SettingsInput)) -> SettingsInput {
@@ -458,7 +481,7 @@ mod tests {
         let mut s = Settings { visible: false, position: Some((1, 2)), ..Settings::default() };
         s.normalize();
         let mut change = input(30, &[("Spotify.exe", 250), ("chrome.exe", 0)]);
-        change.placement = Placement::Custom;
+        change.placement = Some(Placement::Custom);
         change.apply_to(&mut s).unwrap();
         assert_eq!((s.font_px, s.hide_from_capture, s.visible, s.position), (30, false, false, Some((1, 2))));
         assert_eq!(s.app_offsets_ms.len(), 1, "an offset of 0 is dropped");
@@ -498,7 +521,8 @@ mod tests {
             with(|i| i.max_width_pct = 90),
             with(|i| i.lines = 1),
             with(|i| i.lines = 3),
-            with(|i| i.placement = Placement::Custom),
+            with(|i| i.placement = Some(Placement::Custom)),
+            with(|i| i.placement = None),
         ];
         for i in ok {
             assert!(i.validate().is_ok());
@@ -530,6 +554,7 @@ mod tests {
             serde_json::from_value::<SettingsInput>(v)
         };
         assert!(with_field("accent", "blue".into()).is_ok());
+        assert!(with_field("placement", serde_json::Value::Null).is_ok(), "null means keep");
         for (field, value) in [("accent", "pink".into()), ("placement", "middle".into()), ("placement", 3.into()), ("accent", serde_json::Value::Null)] {
             assert!(with_field(field, value).is_err(), "{field}");
         }
@@ -543,14 +568,18 @@ mod tests {
             s
         };
         let mut s = dragged();
-        with(|i| i.placement = Placement::TopCenter).apply_to(&mut s).unwrap();
+        with(|i| i.placement = Some(Placement::TopCenter)).apply_to(&mut s).unwrap();
         assert_eq!((s.placement, s.position), (Placement::TopCenter, None));
         let mut s = dragged();
-        with(|i| i.placement = Placement::Custom).apply_to(&mut s).unwrap();
+        with(|i| i.placement = Some(Placement::Custom)).apply_to(&mut s).unwrap();
+        assert_eq!((s.placement, s.position), (Placement::Custom, Some((5, 6))));
+        // No place sent (the page did not touch the select): a strip dragged after the page loaded stays where it is.
+        let mut s = dragged();
+        with(|i| i.placement = None).apply_to(&mut s).unwrap();
         assert_eq!((s.placement, s.position), (Placement::Custom, Some((5, 6))));
         // Custom with nothing dragged is the default place.
         let mut s = Settings::default();
-        with(|i| i.placement = Placement::Custom).apply_to(&mut s).unwrap();
+        with(|i| i.placement = Some(Placement::Custom)).apply_to(&mut s).unwrap();
         assert_eq!((s.placement, s.position), (Placement::BottomCenter, None));
     }
 

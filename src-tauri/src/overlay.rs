@@ -53,12 +53,19 @@ impl Rect {
 const MIN_VISIBLE: i32 = 80;
 
 /// Window height in physical pixels for `font_px` CSS pixels, with the line heights and paddings of overlay.css.
-/// Three lines: prev + current + next at two visual lines each, the plate padding and the toast row
-/// (current 2 lines of 1.3em, prev and next 0.7em, plate padding .6em, toast 1.12em). One line: the current
-/// line, or the title and artist of the info card, plus the same padding and toast.
+/// Three lines, every row on two visual lines: prev 1.82em + current 2.6em + next 1.82em, plate padding .6em,
+/// toast 1.12em = 7.96em, plus 6 px for the three rows' padding and 6 px under the toast. One line, worst case
+/// the info card with a two-line title (2.6em) and a two-line artist (1.82em): 6.14em and 10 px.
+/// Both are rounded up, so the content never clips.
 pub fn strip_height(font_px: u32, scale: f64, lines: u32) -> i32 {
-    let em = if lines == 1 { 5.2 } else { 8.2 };
-    ((em * f64::from(font_px) + 6.0) * scale).ceil() as i32
+    let em = if lines == 1 { 6.2 } else { 8.0 };
+    ((em * f64::from(font_px) + 12.0) * scale).ceil() as i32
+}
+
+/// Moves a window of `size` the shortest way so that all of it is inside `area` (its top left corner wins
+/// when it is larger than the area).
+pub fn fit_in(pos: (i32, i32), size: (i32, i32), area: Rect) -> (i32, i32) {
+    (pos.0.clamp(area.x, (area.right() - size.0).max(area.x)), pos.1.clamp(area.y, (area.bottom() - size.1).max(area.y)))
 }
 
 /// Top-left and size of the strip from the monitor work area (physical px), the scale factor and the
@@ -177,7 +184,9 @@ pub fn apply(app: &AppHandle, settings: &Settings) {
         (false, ..) => (want.x, want.y),
         (true, true, _, Some(saved)) => clamp_to_monitors(saved, size, &screens),
         (true, true, ..) | (true, false, None, _) => (want.x, want.y),
-        // Dragged: same left edge and same bottom edge, whatever the new height.
+        // Dragged: same left edge and same bottom edge, whatever the new height. A new size (taller, or wider
+        // from the width setting) must not push the strip off its monitor, so then all of it is kept inside.
+        (true, false, Some(c), _) if (c.w, c.h) != size => fit_in((c.x, c.bottom() - want.h), size, work),
         (true, false, Some(c), _) => clamp_to_monitors((c.x, c.bottom() - want.h), size, &screens),
     };
 
@@ -565,7 +574,7 @@ mod tests {
     fn default_rect_scales() {
         let r = rect(Rect::new(0, 0, 2880, 1560), 1.5, |_| {});
         assert_eq!((r.x, r.w, r.bottom()), (576, 1728, 1548));
-        assert_eq!(r.h, 280);
+        assert_eq!(r.h, 282);
     }
 
     #[test]
@@ -614,6 +623,34 @@ mod tests {
         assert_eq!((one.h, one.bottom()), (strip_height(22, 1.0, 1), 1032));
         let top = rect(work, 1.0, |s| (s.lines, s.placement) = (1, Placement::TopCenter));
         assert_eq!((top.y, top.h), (8, strip_height(22, 1.0, 1)));
+    }
+
+    #[test]
+    fn the_window_is_never_shorter_than_its_content() {
+        // Worst case from overlay.css: every row on two lines plus the toast and its 6 px gap (3 lines: 7.96em + 12 px),
+        // and for one line the info card with a two-line title and a two-line artist (6.14em + 10 px).
+        for font in crate::settings::FONT_PX_RANGE {
+            let f = f64::from(font);
+            assert!(f64::from(strip_height(font, 1.0, 3)) >= 7.96 * f + 12.0, "3 lines at {font}");
+            assert!(f64::from(strip_height(font, 1.0, 1)) >= 6.14 * f + 10.0, "1 line at {font}");
+        }
+    }
+
+    #[test]
+    fn a_resized_strip_is_pulled_whole_onto_the_work_area() {
+        let work = Rect::new(0, 0, 1920, 1040);
+        // Wider than before at the same left edge: it would run off the right edge, so it moves left.
+        assert_eq!(fit_in((1200, 500), (1536, 200), work), (384, 500));
+        // Too low: the bottom edge goes up to the work area's bottom.
+        assert_eq!(fit_in((100, 950), (800, 200), work), (100, 840));
+        // Above and left of the work area.
+        assert_eq!(fit_in((-300, -50), (800, 200), work), (0, 0));
+        // Already inside: unchanged.
+        assert_eq!(fit_in((100, 100), (800, 200), work), (100, 100));
+        // Larger than the work area: the top left corner stays visible.
+        assert_eq!(fit_in((50, 50), (2000, 200), work), (0, 50));
+        // A second monitor's work area works the same.
+        assert_eq!(fit_in((3000, 900), (1536, 200), Rect::new(1920, 0, 1920, 1040)), (2304, 840));
     }
 
     #[test]
