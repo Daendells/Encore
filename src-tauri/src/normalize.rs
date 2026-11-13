@@ -47,7 +47,11 @@ fn cut_tail(s: &str) -> Option<&str> {
     });
     let mv = lower.rfind(' ').filter(|&at| matches!(&lower[at + 1..], "mv" | "m/v"));
     // "feat." before a dash belongs to the artist and stays.
-    let featured = featured_at(&lower).filter(|&at| split_dash(&s[at..], false, &DASHES).is_none());
+    // A bracket after it ("ft. X (Japanese Version)") may hold a qualifier, so nothing is cut there either.
+    let featured = featured_at(&lower).filter(|&at| {
+        split_dash(&s[at..], false, &DASHES).is_none()
+            && !s[at..].contains(|c| BRACKETS.iter().any(|b| b.0 == c || b.1 == c))
+    });
     let cut = [official, mv, featured].into_iter().flatten().min().map(|at| &s[..at]);
     // A bare separator left over ("Song - Official Video" cut at "Official") goes too.
     let cut = cut.map(|head| head.trim_end().trim_end_matches(['-', '–', '—', '|']).trim_end());
@@ -363,6 +367,10 @@ mod tests {
             ("Song feat. Someone Else", "Song"),
             ("Song Featuring Someone", "Song"),
             ("Song ft. Someone Official Video", "Song"),
+            ("Song ft. X", "Song"),
+            ("Song ft. X (Japanese Version)", "Song ft. X (Japanese Version)"),
+            ("Song feat. X (Skrillex Remix)", "Song feat. X (Skrillex Remix)"),
+            ("Song ft. X [English Ver.]", "Song ft. X [English Ver.]"),
             ("Artist feat. B - Song", "Artist feat. B - Song"),
             ("Song | Artist", "Song | Artist"),
             ("The Official Story", "The Official Story"),

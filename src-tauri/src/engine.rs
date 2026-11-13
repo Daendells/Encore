@@ -223,6 +223,10 @@ impl Engine {
         let same = same_song
             && self.cur.as_ref().is_some_and(|c| c.track.duration_ms.abs_diff(duration_ms) <= DURATION_TOLERANCE_MS);
         let confirming = self.hold_until.take_if(|t| now >= *t).is_some();
+        // The confirming read decides what the track is: it needs a title read that just succeeded.
+        if confirming && !s.media_fresh {
+            return self.forget(host);
+        }
         // The title stayed but the length changed: Spotify sends the next timeline before the next title. Wait for
         // the title, and take it for a new track only when it still has not come.
         if same_song && !same && !confirming {
@@ -679,6 +683,7 @@ mod tests {
             title: title.into(),
             artist: "Artist".into(),
             album: String::new(),
+            media_fresh: true,
             status: if playing { Status::Playing } else { Status::Paused },
             report: Report { position_ms: pos, last_updated_wall_ms: None, rate: None, playing, duration_ms },
         })
@@ -818,6 +823,27 @@ mod tests {
         assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![], vec![], 2));
         r.lyrics(Ok(Lyrics::Synced(vec![ln(0, "next one"), ln(4_000, "next two")])));
         assert_eq!(r.h.out(), [lines(3, None, "next one", Some("next two"), false, true)]);
+    }
+
+    #[test]
+    fn confirming_read_without_a_fresh_media_read_is_no_track() {
+        let mut r = Rig::showing(song(), 6_000.0);
+        r.advance(1_000.0);
+        r.poll(snap("Song", 0.0, true, 188_000.0));
+        r.h.out();
+        r.h.vis();
+        // The title read failed twice: the old title is reused with the new timeline. It must not be taken for a track.
+        r.advance(CONFIRM_MS);
+        let mut stale = snap("Song", 700.0, true, 188_000.0).unwrap();
+        stale.media_fresh = false;
+        r.h.snap = Some(stale);
+        assert_eq!(r.step(None), None);
+        assert_eq!((r.h.out(), r.h.vis(), r.h.fetched()), (vec![], vec![], 1));
+        assert!(r.e.cur.is_none());
+
+        // A fresh read afterwards is looked up as usual.
+        r.poll(snap("Song", 800.0, true, 188_000.0));
+        assert_eq!(r.h.fetched(), 2);
     }
 
     #[test]

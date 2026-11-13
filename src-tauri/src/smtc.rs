@@ -40,6 +40,8 @@ pub struct Snapshot {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// False when the title, artist and album are the last good read, because this one failed or timed out.
+    pub media_fresh: bool,
     pub status: Status,
     pub report: Report,
 }
@@ -129,7 +131,9 @@ fn ticks_to_ms(ticks: i64) -> f64 {
 
 fn read_session(s: &Session, last: &mut Option<(Session, Media)>) -> Option<Snapshot> {
     // The slow read first, so the position below is as fresh as possible when it is returned.
-    let [title, artist, album] = media_or_last(read_media(s), s, last);
+    let fresh = read_media(s);
+    let media_fresh = fresh.is_some();
+    let [title, artist, album] = media_or_last(fresh, s, last);
     let timeline = s.GetTimelineProperties().ok()?;
     let playback = s.GetPlaybackInfo().ok()?;
 
@@ -142,6 +146,7 @@ fn read_session(s: &Session, last: &mut Option<(Session, Media)>) -> Option<Snap
         title,
         artist,
         album,
+        media_fresh,
         status,
         report: Report {
             position_ms: ticks_to_ms(ticks(timeline.Position()).saturating_sub(start)),
