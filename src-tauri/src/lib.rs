@@ -140,8 +140,8 @@ pub fn run() {
             let settings = store.load();
 
             let config = app.config().app.windows.iter().find(|w| w.label == "overlay").cloned();
-            // The first font size goes in with the page: an event sent before the page listens is lost.
-            let mut script = format!("window.__ENCORE_FONT_PX__ = {};", settings.font_px);
+            // The first style goes in with the page: an event sent before the page listens is lost.
+            let mut script = format!("window.__ENCORE_STYLE__ = {};", overlay::style(&settings));
             if timing.is_some() {
                 // Asks the overlay to answer every line with `shown`.
                 script.push_str("window.__ENCORE_TIMING__ = true;");

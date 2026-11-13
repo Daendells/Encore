@@ -11,12 +11,59 @@
   <h1 data-t="settings.title"></h1>
   <p id="error" role="alert" hidden></p>
 
-  <section>
-    <div class="row">
-      <label for="size" data-t="settings.size"></label>
-      <output id="size-out" for="size"></output>
+  <section aria-labelledby="look-title">
+    <h2 id="look-title" data-t="settings.look"></h2>
+
+    <fieldset>
+      <legend><span data-t="settings.preset"></span> <span id="preset-custom" class="state" aria-live="polite"></span></legend>
+      <div id="presets" class="choices"></div>
+    </fieldset>
+
+    <div class="field">
+      <label for="place" data-t="settings.position"></label>
+      <select id="place"></select>
     </div>
-    <input id="size" type="range" min="12" max="48" step="1">
+
+    <fieldset>
+      <legend data-t="settings.lines"></legend>
+      <div class="choices two" aria-describedby="lines-help">
+        <input id="lines-1" type="radio" name="lines" value="1"><label for="lines-1" data-t="settings.lines.1"></label>
+        <input id="lines-3" type="radio" name="lines" value="3"><label for="lines-3" data-t="settings.lines.3"></label>
+      </div>
+      <p id="lines-help" class="help" data-t="settings.lines.help"></p>
+    </fieldset>
+
+    <div class="field">
+      <div class="row">
+        <label for="size" data-t="settings.size"></label>
+        <output id="size-out" for="size"></output>
+      </div>
+      <input id="size" type="range" min="12" max="48" step="1">
+    </div>
+
+    <div class="field">
+      <div class="row">
+        <label for="plate" data-t="settings.plate"></label>
+        <output id="plate-out" for="plate"></output>
+      </div>
+      <input id="plate" type="range" min="0" max="70" step="5" aria-describedby="plate-help">
+      <p id="plate-help" class="help" data-t="settings.plate.help"></p>
+    </div>
+
+    <div class="field">
+      <div class="row">
+        <label for="width" data-t="settings.width"></label>
+        <output id="width-out" for="width"></output>
+      </div>
+      <input id="width" type="range" min="40" max="90" step="5">
+    </div>
+
+    <fieldset>
+      <legend data-t="settings.accent"></legend>
+      <div id="accents" class="choices"></div>
+    </fieldset>
+
+    <button id="reset-look" type="button" data-t="settings.reset_look"></button>
   </section>
 
   <section aria-labelledby="offsets-title">

@@ -22,7 +22,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WNDCLASSW, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
-use crate::settings::{Settings, Store};
+use crate::engine::Msg;
+use crate::settings::{Placement, Settings, Store};
 
 // ---- Geometry (pure) ----
 
@@ -51,19 +52,47 @@ impl Rect {
 /// How much of the strip must stay on a monitor, in physical pixels.
 const MIN_VISIBLE: i32 = 80;
 
-/// Window height in physical pixels for `font_px` CSS pixels: prev + current + next at two visual
-/// lines each, the plate padding and the toast row, with the line heights and paddings of overlay.css.
-pub fn strip_height(font_px: u32, scale: f64) -> i32 {
-    // Rows: current 2 lines of 1.3em plus padding, prev and next at 0.7em, plate padding .6em, toast 1.12em.
-    ((8.2 * f64::from(font_px) + 6.0) * scale).ceil() as i32
+/// Window height in physical pixels for `font_px` CSS pixels, with the line heights and paddings of overlay.css.
+/// Three lines: prev + current + next at two visual lines each, the plate padding and the toast row
+/// (current 2 lines of 1.3em, prev and next 0.7em, plate padding .6em, toast 1.12em). One line: the current
+/// line, or the title and artist of the info card, plus the same padding and toast.
+pub fn strip_height(font_px: u32, scale: f64, lines: u32) -> i32 {
+    let em = if lines == 1 { 5.2 } else { 8.2 };
+    ((em * f64::from(font_px) + 6.0) * scale).ceil() as i32
 }
 
-/// Default top-left and size of the strip from the monitor work area (physical px) and scale factor.
-pub fn default_rect(work: Rect, scale: f64, font_px: u32) -> Rect {
-    let w = (f64::from(work.w) * 0.6).round() as i32;
-    let h = strip_height(font_px, scale);
-    let bottom = work.bottom() - (8.0 * scale).round() as i32;
-    Rect::new(work.x + (work.w - w) / 2, bottom - h, w, h)
+/// Top-left and size of the strip from the monitor work area (physical px), the scale factor and the
+/// display settings. `Custom` gets the size of the default place; its position is the saved one.
+pub fn strip_rect(work: Rect, scale: f64, s: &Settings) -> Rect {
+    let w = (f64::from(work.w) * f64::from(s.max_width_pct) / 100.0).round() as i32;
+    let h = strip_height(s.font_px, scale, s.lines);
+    let margin = (8.0 * scale).round() as i32;
+    let x = match s.placement {
+        Placement::BottomLeft => work.x + margin,
+        Placement::BottomRight => work.right() - margin - w,
+        _ => work.x + (work.w - w) / 2,
+    };
+    let y = if s.placement == Placement::TopCenter { work.y + margin } else { work.bottom() - margin - h };
+    Rect::new(x, y, w, h)
+}
+
+/// What the page needs to draw the settings, as CSS custom properties and a class: sent with the `style`
+/// event and, for the first draw, with the init script.
+pub fn style(s: &Settings) -> serde_json::Value {
+    let (h_align, v_align) = match s.placement {
+        Placement::BottomLeft => ("flex-start", "flex-end"),
+        Placement::BottomRight => ("flex-end", "flex-end"),
+        Placement::TopCenter => ("center", "flex-start"),
+        Placement::BottomCenter | Placement::Custom => ("center", "flex-end"),
+    };
+    serde_json::json!({
+        "font_px": s.font_px,
+        "lines": s.lines,
+        "plate_opacity": s.plate_opacity,
+        "accent": s.accent.hex(),
+        "h_align": h_align,
+        "v_align": v_align,
+    })
 }
 
 /// Clamps a saved position so at least 80 px of the strip stays on some monitor.
@@ -140,13 +169,16 @@ pub fn apply(app: &AppHandle, settings: &Settings) {
     let Some(monitor) = monitors.iter().find(holds).or(primary.as_ref()).or(monitors.first()) else { return };
 
     let work = rect_of(&monitor.work_area().position, &monitor.work_area().size);
-    let want = default_rect(work, monitor.scale_factor(), settings.font_px);
+    let want = strip_rect(work, monitor.scale_factor(), settings);
     let size = (want.w, want.h);
-    let pos = match (first, current, settings.position) {
-        (true, _, Some(saved)) => clamp_to_monitors(saved, size, &screens),
-        (true, _, None) | (false, None, _) => (want.x, want.y),
-        // Same left edge and same bottom edge, whatever the new height.
-        (false, Some(c), _) => clamp_to_monitors((c.x, c.bottom() - want.h), size, &screens),
+    let custom = settings.placement == Placement::Custom;
+    let pos = match (custom, first, current, settings.position) {
+        // A chosen place is always where the work area puts it.
+        (false, ..) => (want.x, want.y),
+        (true, true, _, Some(saved)) => clamp_to_monitors(saved, size, &screens),
+        (true, true, ..) | (true, false, None, _) => (want.x, want.y),
+        // Dragged: same left edge and same bottom edge, whatever the new height.
+        (true, false, Some(c), _) => clamp_to_monitors((c.x, c.bottom() - want.h), size, &screens),
     };
 
     EXCLUDE.store(settings.hide_from_capture, Ordering::SeqCst);
@@ -159,14 +191,14 @@ pub fn apply(app: &AppHandle, settings: &Settings) {
     }
     if current.map(|c| (c.x, c.y)) != Some(pos) {
         let _ = window.set_position(PhysicalPosition::new(pos.0, pos.1));
-        // A saved position follows the bottom edge when the height changes.
-        if !first && settings.position.is_some() {
+        // A dragged position follows the bottom edge when the height changes.
+        if !first && custom {
             save_position(app, pos);
         }
     }
 
     if !first {
-        let _ = app.emit_to("overlay", "style", serde_json::json!({ "font_px": settings.font_px }));
+        let _ = app.emit_to("overlay", "style", style(settings));
     }
 }
 
@@ -221,17 +253,14 @@ fn drop_app_window_style(window: &WebviewWindow) {
     }
 }
 
-/// Back to the bottom centre, forgetting the saved position.
-pub fn reset_position(app: &AppHandle, store: &Store) {
-    let settings = store.update(|s| s.position = None);
-    PLACED.store(false, Ordering::SeqCst);
-    apply(app, &settings);
-}
-
+/// A dragged strip is `Custom` placement at `pos`.
 fn save_position(app: &AppHandle, pos: (i32, i32)) {
     if let Some(store) = store(app) {
         // Saved on top of the file, so a change made by the settings window in the meantime is kept.
-        store.update(|s| s.position = Some(pos));
+        store.update(|s| {
+            s.position = Some(pos);
+            s.normalize();
+        });
     }
 }
 
@@ -364,6 +393,8 @@ pub(crate) fn set_ctrl(app: &AppHandle, down: bool) {
     if let (Some(from), Some(now)) = (from, at) {
         if from != now {
             save_position(app, now);
+            // The tray and the settings window show the placement as Custom.
+            let _ = app.state::<std::sync::mpsc::Sender<Msg>>().send(Msg::SettingsChanged);
         }
     }
 }
@@ -503,6 +534,7 @@ unsafe fn ctrl_from_input(lparam: LPARAM) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::Preset;
 
     #[test]
     fn restart_only_when_the_last_one_is_30_seconds_old() {
@@ -516,30 +548,98 @@ mod tests {
 
     const SCREEN: Rect = Rect { x: 0, y: 0, w: 1920, h: 1080 };
 
+    fn rect(work: Rect, scale: f64, change: impl FnOnce(&mut Settings)) -> Rect {
+        let mut s = Settings::default();
+        change(&mut s);
+        strip_rect(work, scale, &s)
+    }
+
     #[test]
     fn default_rect_is_60_percent_centred_above_taskbar() {
-        let r = default_rect(Rect::new(0, 0, 1920, 1040), 1.0, 22);
+        let r = rect(Rect::new(0, 0, 1920, 1040), 1.0, |_| {});
         assert_eq!((r.x, r.w, r.bottom()), (384, 1152, 1032));
-        assert_eq!(r.h, strip_height(22, 1.0));
+        assert_eq!(r.h, strip_height(22, 1.0, 3));
     }
 
     #[test]
     fn default_rect_scales() {
-        let r = default_rect(Rect::new(0, 0, 2880, 1560), 1.5, 22);
+        let r = rect(Rect::new(0, 0, 2880, 1560), 1.5, |_| {});
         assert_eq!((r.x, r.w, r.bottom()), (576, 1728, 1548));
         assert_eq!(r.h, 280);
     }
 
     #[test]
     fn default_rect_follows_work_area_origin() {
-        let r = default_rect(Rect::new(1920, 100, 1000, 900), 1.0, 22);
+        let r = rect(Rect::new(1920, 100, 1000, 900), 1.0, |_| {});
         assert_eq!((r.x, r.w, r.bottom()), (1920 + 200, 600, 992));
     }
 
     #[test]
+    fn each_placement_sits_against_its_edge_with_an_8_px_margin() {
+        let work = Rect::new(0, 0, 1920, 1040);
+        let top = rect(work, 1.0, |s| s.placement = Placement::TopCenter);
+        assert_eq!((top.x, top.y, top.w), (384, 8, 1152));
+        let left = rect(work, 1.0, |s| s.placement = Placement::BottomLeft);
+        assert_eq!((left.x, left.bottom()), (8, 1032));
+        let right = rect(work, 1.0, |s| s.placement = Placement::BottomRight);
+        assert_eq!((right.right(), right.bottom()), (1912, 1032));
+        // The margin scales, and the work area need not start at 0.
+        let scaled = rect(Rect::new(100, 50, 1920, 1040), 1.5, |s| s.placement = Placement::TopCenter);
+        assert_eq!(scaled.y, 50 + 12);
+        let scaled_right = rect(Rect::new(100, 50, 1920, 1040), 1.5, |s| s.placement = Placement::BottomRight);
+        assert_eq!(scaled_right.right(), 100 + 1920 - 12);
+        // Custom has the size of the default place; the caller supplies the position.
+        let custom = rect(work, 1.0, |s| s.placement = Placement::Custom);
+        assert_eq!((custom.w, custom.h), (1152, strip_height(22, 1.0, 3)));
+    }
+
+    #[test]
+    fn width_follows_the_percentage() {
+        let work = Rect::new(0, 0, 1920, 1040);
+        for (pct, w) in [(40, 768), (60, 1152), (80, 1536), (90, 1728)] {
+            let r = rect(work, 1.0, |s| s.max_width_pct = pct);
+            assert_eq!((r.w, r.x), (w, (1920 - w) / 2), "{pct}");
+        }
+    }
+
+    #[test]
+    fn one_line_is_shorter_than_three() {
+        for font in [12, 22, 48] {
+            for scale in [1.0, 1.25, 1.5] {
+                assert!(strip_height(font, scale, 1) < strip_height(font, scale, 3), "{font} {scale}");
+            }
+        }
+        let work = Rect::new(0, 0, 1920, 1040);
+        let one = rect(work, 1.0, |s| s.lines = 1);
+        assert_eq!((one.h, one.bottom()), (strip_height(22, 1.0, 1), 1032));
+        let top = rect(work, 1.0, |s| (s.lines, s.placement) = (1, Placement::TopCenter));
+        assert_eq!((top.y, top.h), (8, strip_height(22, 1.0, 1)));
+    }
+
+    #[test]
     fn height_grows_with_font() {
-        assert!(strip_height(28, 1.0) > strip_height(22, 1.0));
-        assert!(strip_height(18, 1.0) < strip_height(22, 1.0));
+        assert!(strip_height(28, 1.0, 3) > strip_height(22, 1.0, 3));
+        assert!(strip_height(18, 1.0, 3) < strip_height(22, 1.0, 3));
+        assert!(strip_height(28, 1.0, 1) > strip_height(22, 1.0, 1));
+    }
+
+    #[test]
+    fn the_page_gets_colour_opacity_alignment_and_lines() {
+        let mut s = Settings::default();
+        s.apply_preset(Preset::Karaoke);
+        let v = style(&s);
+        assert_eq!(v["font_px"], 30);
+        assert_eq!(v["lines"], 3);
+        assert_eq!(v["plate_opacity"], 55);
+        assert_eq!(v["accent"], "#FFD54A");
+        assert_eq!((v["h_align"].as_str(), v["v_align"].as_str()), (Some("center"), Some("flex-end")));
+        s.apply_preset(Preset::Focus);
+        let v = style(&s);
+        assert_eq!((v["lines"].as_u64(), v["accent"].as_str(), v["v_align"].as_str()), (Some(1), Some("#8FD3FF"), Some("flex-start")));
+        s.set_placement(Placement::BottomRight);
+        assert_eq!(style(&s)["h_align"], "flex-end");
+        s.set_placement(Placement::BottomLeft);
+        assert_eq!(style(&s)["h_align"], "flex-start");
     }
 
     #[test]

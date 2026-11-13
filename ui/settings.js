@@ -5,6 +5,8 @@ const $ = (id) => document.getElementById(id);
 
 let text = {};
 let saveTimer = null;
+// What the Rust side says each style sets; the page never repeats the numbers.
+let presets = [];
 
 function showError(on) {
   const box = $("error");
@@ -58,10 +60,91 @@ function renderShortcuts(list) {
   );
 }
 
+/** A radio group drawn as buttons: the input, then its label, one pair per option. */
+function renderChoices(box, name, options, onLabel) {
+  box.replaceChildren(
+    ...options.flatMap((o) => {
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = name;
+      input.id = `${name}-${o.id}`;
+      input.value = o.id;
+      const label = document.createElement("label");
+      label.htmlFor = input.id;
+      onLabel(label, o);
+      return [input, label];
+    }),
+  );
+}
+
+function checkRadio(name, value) {
+  for (const input of document.getElementsByName(name)) input.checked = input.value === String(value);
+}
+
+function checked(name) {
+  return document.querySelector(`input[name="${name}"]:checked`)?.value;
+}
+
+function showSliders() {
+  $("size-out").textContent = `${$("size").value} ${text["unit.px"] ?? ""}`;
+  $("plate-out").textContent = `${$("plate").value}%`;
+  $("width-out").textContent = `${$("width").value}%`;
+}
+
+/** Puts the display values into the controls. */
+function fillLook(look) {
+  $("size").value = String(look.font_px);
+  $("plate").value = String(look.plate_opacity);
+  $("width").value = String(look.max_width_pct);
+  checkRadio("lines", look.lines);
+  checkRadio("accent", look.accent);
+  $("place").value = look.placement;
+  showSliders();
+}
+
+function markPreset(id) {
+  checkRadio("preset", id);
+  $("preset-custom").textContent = id === "custom" ? (text["preset.custom"] ?? "") : "";
+}
+
+let built = false;
+
+function renderLook(view) {
+  presets = view.presets;
+  // Built once: the window reloads on every focus, and rebuilding would take the keyboard focus away.
+  if (!built) {
+    built = true;
+    renderChoices($("presets"), "preset", presets, (label, p) => (label.textContent = text[`preset.${p.id}`] ?? ""));
+    renderChoices($("accents"), "accent", view.accents, (label, a) => {
+      const dot = document.createElement("span");
+      dot.className = "swatch";
+      dot.style.background = a.hex;
+      dot.setAttribute("aria-hidden", "true");
+      label.append(dot, document.createTextNode(text[`accent.${a.id}`] ?? ""));
+    });
+  }
+  const ids = [...view.placements];
+  // A strip that was dragged by hand has no named place: shown, but not something to choose.
+  if (view.placement === "custom") ids.push("custom");
+  if ($("place").dataset.ids !== ids.join()) {
+    $("place").dataset.ids = ids.join();
+    $("place").replaceChildren(
+      ...ids.map((id) => {
+        const option = document.createElement("option");
+        option.value = id;
+        option.disabled = id === "custom";
+        option.textContent = text[`place.${id}`] ?? "";
+        return option;
+      }),
+    );
+  }
+  fillLook(view);
+  markPreset(view.preset);
+}
+
 async function load() {
   const view = await invoke("get_settings");
-  $("size").value = String(view.font_px);
-  $("size-out").textContent = `${view.font_px} ${text["unit.px"] ?? ""}`;
+  renderLook(view);
   $("capture").checked = view.hide_from_capture;
   $("version").textContent = view.version;
   renderOffsets(view.apps);
@@ -82,9 +165,19 @@ async function save() {
     if (ms !== 0) offsets[li.dataset.app] = ms;
   }
   try {
-    await invoke("set_settings", {
-      input: { font_px: Number($("size").value), hide_from_capture: $("capture").checked, app_offsets_ms: offsets },
+    const preset = await invoke("set_settings", {
+      input: {
+        font_px: Number($("size").value),
+        hide_from_capture: $("capture").checked,
+        app_offsets_ms: offsets,
+        placement: $("place").value,
+        lines: Number(checked("lines")),
+        plate_opacity: Number($("plate").value),
+        max_width_pct: Number($("width").value),
+        accent: checked("accent"),
+      },
     });
+    markPreset(preset);
     showError(false);
   } catch {
     showError(true);
@@ -92,14 +185,30 @@ async function save() {
   }
 }
 
-$("size").addEventListener("input", () => {
-  $("size-out").textContent = `${$("size").value} ${text["unit.px"] ?? ""}`;
-  // The strip follows while the slider moves; saved at most every 80 ms.
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(save, 80);
+for (const id of ["size", "plate", "width"]) {
+  $(id).addEventListener("input", () => {
+    showSliders();
+    // The strip follows while the slider moves; saved at most every 80 ms.
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 80);
+  });
+  $(id).addEventListener("change", () => {
+    clearTimeout(saveTimer);
+    save();
+  });
+}
+$("place").addEventListener("change", save);
+$("accents").addEventListener("change", save);
+for (const input of document.getElementsByName("lines")) input.addEventListener("change", save);
+// A style sets every display value at once, in one save.
+$("presets").addEventListener("change", () => {
+  const look = presets.find((p) => p.id === checked("preset"));
+  if (look) fillLook(look);
+  save();
 });
-$("size").addEventListener("change", () => {
-  clearTimeout(saveTimer);
+$("reset-look").addEventListener("click", () => {
+  const base = presets.find((p) => p.id === "default");
+  if (base) fillLook(base);
   save();
 });
 $("capture").addEventListener("change", save);

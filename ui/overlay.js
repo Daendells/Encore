@@ -14,9 +14,23 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 // Whether the plate currently shows lyric lines (a slide only makes sense from one line set to the next).
 let showingLines = false;
 
-// The first size comes with the page (an event sent before this script listens would be lost).
-const firstPx = Number(window.__ENCORE_FONT_PX__);
-if (Number.isFinite(firstPx) && firstPx > 0) document.documentElement.style.setProperty("--font", `${firstPx}px`);
+/** Font size, plate opacity, accent and alignment as CSS custom properties, and the number of lines as an attribute.
+ *  Applied when the page starts and when the settings change, never while lyrics play. */
+function applyStyle(style) {
+  if (!style) return;
+  const root = document.documentElement;
+  const px = Number(style.font_px);
+  if (Number.isFinite(px) && px > 0) root.style.setProperty("--font", `${px}px`);
+  const opacity = Number(style.plate_opacity);
+  if (Number.isFinite(opacity) && opacity >= 0 && opacity <= 100) root.style.setProperty("--plate-a", String(opacity / 100));
+  if (/^#[0-9a-f]{6}$/i.test(style.accent)) root.style.setProperty("--accent", style.accent);
+  if (["flex-start", "center", "flex-end"].includes(style.h_align)) root.style.setProperty("--h-align", style.h_align);
+  if (["flex-start", "flex-end"].includes(style.v_align)) root.style.setProperty("--v-align", style.v_align);
+  if (style.lines === 1 || style.lines === 3) root.dataset.lines = String(style.lines);
+}
+
+// The first style comes with the page (an event sent before this script listens would be lost).
+applyStyle(window.__ENCORE_STYLE__);
 
 function setRow(row, text) {
   row.hidden = text == null;
@@ -25,7 +39,7 @@ function setRow(row, text) {
 
 /** Where a visible row is on screen now, in-flight transforms included: centre, height, colour, opacity, effective text size. */
 function look(row) {
-  if (row.hidden) return null;
+  if (row.hidden || row.offsetHeight === 0) return null; // also a row hidden by the one-line mode
   const box = row.getBoundingClientRect();
   const css = getComputedStyle(row);
   // The box is scaled by a running slide, the layout height (offsetHeight) is not.
@@ -61,6 +75,7 @@ function showLines(ui) {
   plate.classList.remove("slide"); // also ends any running transition
 
   plate.hidden = false;
+  plate.classList.remove("info");
   setRow(rows.prev, ui.prev);
   setRow(rows.next, ui.next);
   rows.cur.hidden = false;
@@ -100,6 +115,7 @@ function showLines(ui) {
 
 function showInfo(ui) {
   plate.classList.remove("slide");
+  plate.classList.add("info");
   plate.hidden = false;
   setRow(rows.prev, null);
   rows.cur.classList.remove("dim");
@@ -137,10 +153,7 @@ listen("ui", (event) => {
   else if (ui.kind === "clear") clearPlate();
 });
 
-listen("style", (event) => {
-  const px = Number(event.payload.font_px);
-  if (Number.isFinite(px) && px > 0) document.documentElement.style.setProperty("--font", `${px}px`);
-});
+listen("style", (event) => applyStyle(event.payload));
 
 // While Ctrl is held the window takes mouse input and the plate can be dragged.
 listen("drag", (event) => document.body.classList.toggle("drag", event.payload.on === true));
