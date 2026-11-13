@@ -88,8 +88,8 @@ fn text(r: Result<HSTRING>) -> String {
     r.map(|h| h.to_string_lossy()).unwrap_or_default()
 }
 
-/// Title, artist and album. Empty strings when the call fails or takes longer than `MEDIA_TIMEOUT`.
-fn read_media(s: &Session) -> [String; 3] {
+/// Title, artist and album. None when the call fails or takes longer than `MEDIA_TIMEOUT`.
+fn read_media(s: &Session) -> Option<[String; 3]> {
     let (tx, rx) = mpsc::channel();
     let started = s.TryGetMediaPropertiesAsync().and_then(|op| {
         op.SetCompleted(&AsyncOperationCompletedHandler::new(move |op, _status| {
@@ -104,18 +104,32 @@ fn read_media(s: &Session) -> [String; 3] {
         }))
     });
     if started.is_err() {
-        return Default::default();
+        return None;
     }
-    rx.recv_timeout(MEDIA_TIMEOUT).ok().flatten().unwrap_or_default()
+    rx.recv_timeout(MEDIA_TIMEOUT).ok().flatten()
+}
+
+type Media = [String; 3];
+
+/// The fresh read, else the last good one of the same session (a slow read must not blank the title),
+/// else empty strings. A fresh read becomes the last one.
+fn media_or_last<S: PartialEq + Clone>(fresh: Option<Media>, session: &S, last: &mut Option<(S, Media)>) -> Media {
+    match fresh {
+        Some(media) => {
+            *last = Some((session.clone(), media.clone()));
+            media
+        }
+        None => last.as_ref().filter(|(s, _)| s == session).map(|(_, media)| media.clone()).unwrap_or_default(),
+    }
 }
 
 fn ticks_to_ms(ticks: i64) -> f64 {
     ticks as f64 / 10_000.0
 }
 
-fn read_session(s: &Session) -> Option<Snapshot> {
+fn read_session(s: &Session, last: &mut Option<(Session, Media)>) -> Option<Snapshot> {
     // The slow read first, so the position below is as fresh as possible when it is returned.
-    let [title, artist, album] = read_media(s);
+    let [title, artist, album] = media_or_last(read_media(s), s, last);
     let timeline = s.GetTimelineProperties().ok()?;
     let playback = s.GetPlaybackInfo().ok()?;
 
@@ -199,6 +213,8 @@ pub struct Watcher {
     on_change: OnChange,
     manager_tokens: [i64; 2],
     tracked: Vec<Tracked>,
+    /// The last title, artist and album read in full, and the session they came from.
+    last_media: Option<(Session, Media)>,
 }
 
 impl Watcher {
@@ -217,7 +233,7 @@ impl Watcher {
             manager.SessionsChanged(&signal::<_, SessionsChangedEventArgs>(&on_change))?,
             manager.CurrentSessionChanged(&signal::<_, CurrentSessionChangedEventArgs>(&on_change))?,
         ];
-        let mut watcher = Watcher { manager, on_change, manager_tokens, tracked: Vec::new() };
+        let mut watcher = Watcher { manager, on_change, manager_tokens, tracked: Vec::new(), last_media: None };
         watcher.sync_sessions();
         Ok(watcher)
     }
@@ -225,16 +241,14 @@ impl Watcher {
     /// Re-enumerates sessions, fixes subscriptions, and reads the followed session (spec B4). None = no session.
     pub fn read(&mut self) -> Option<Snapshot> {
         self.sync_sessions();
-        let current = self.manager.GetCurrentSession().ok().and_then(|c| app_id(&c));
+        let current = self.manager.GetCurrentSession().ok();
         let infos: Vec<(Status, bool)> = self
             .tracked
             .iter()
-            .map(|t| {
-                let is_current = current.is_some() && app_id(&t.session) == current;
-                (status_of(&t.session).unwrap_or(Status::Closed), is_current)
-            })
+            // Two sessions of one app (two browser windows) are told apart by identity, not by app id.
+            .map(|t| (status_of(&t.session).unwrap_or(Status::Closed), current.as_ref() == Some(&t.session)))
             .collect();
-        read_session(&self.tracked[pick(&infos)?].session)
+        read_session(&self.tracked[pick(&infos)?].session, &mut self.last_media)
     }
 
     /// Subscribes to new sessions and drops (and so unsubscribes from) the ones that are gone.
@@ -295,6 +309,23 @@ mod tests {
     #[test]
     fn pick_falls_back_to_current() {
         assert_eq!(pick(&[(Paused, false), (Stopped, true)]), Some(1));
+    }
+
+    fn media(title: &str) -> [String; 3] {
+        [title.to_string(), "Artist".to_string(), String::new()]
+    }
+
+    #[test]
+    fn failed_media_read_reuses_the_last_one_of_the_same_session() {
+        let mut last = None;
+        assert_eq!(media_or_last(Some(media("A")), &1, &mut last), media("A"));
+        // The call failed or timed out: the same session keeps its title, another session gets nothing.
+        assert_eq!(media_or_last(None, &1, &mut last), media("A"));
+        assert_eq!(media_or_last(None, &2, &mut last), <[String; 3]>::default());
+        // A fresh read replaces it.
+        assert_eq!(media_or_last(Some(media("B")), &2, &mut last), media("B"));
+        assert_eq!(media_or_last(None, &2, &mut last), media("B"));
+        assert_eq!(media_or_last(None, &1, &mut last), <[String; 3]>::default());
     }
 
     #[test]

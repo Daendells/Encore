@@ -6,16 +6,12 @@ pub enum Lang {
     En,
 }
 
-/// "id", "id-ID" and "ID_id" are Indonesian; anything else is English.
-pub fn from_locale(name: &str) -> Lang {
-    let name = name.trim().to_ascii_lowercase();
-    match name.strip_prefix("id") {
-        Some(rest) if rest.is_empty() || rest.starts_with(['-', '_']) => Lang::Id,
-        _ => Lang::En,
-    }
+/// A Windows language id: primary language 0x21 is Indonesian, anything else is English.
+pub fn from_langid(id: u16) -> Lang {
+    if id & 0x3ff == 0x21 { Lang::Id } else { Lang::En }
 }
 
-/// The user's Windows language. Debug builds also honour `LARIK_LANG=id|en`, for screenshots and tests.
+/// The language Windows shows its own interface in. Debug builds also honour `LARIK_LANG=id|en`, for screenshots and tests.
 pub fn detect() -> Lang {
     if cfg!(debug_assertions) {
         match std::env::var("LARIK_LANG").as_deref() {
@@ -24,10 +20,7 @@ pub fn detect() -> Lang {
             _ => {}
         }
     }
-    let mut buf = [0u16; 85]; // LOCALE_NAME_MAX_LENGTH
-    let len = unsafe { windows::Win32::Globalization::GetUserDefaultLocaleName(&mut buf) };
-    let len = usize::try_from(len).unwrap_or(0).saturating_sub(1); // the count includes the final NUL
-    from_locale(&String::from_utf16_lossy(&buf[..len]))
+    from_langid(unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() })
 }
 
 /// (key, Indonesian, English)
@@ -112,12 +105,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn locale_names_map_to_a_language() {
-        for name in ["id-ID", "id", "ID-id", "id_ID"] {
-            assert_eq!(from_locale(name), Lang::Id, "{name}");
+    fn language_ids_map_to_a_language() {
+        // Indonesian has primary language 0x21 (id-ID is 0x0421); the sublanguage bits do not matter.
+        for id in [0x0421, 0x0021, 0x0821] {
+            assert_eq!(from_langid(id), Lang::Id, "{id:#06x}");
         }
-        for name in ["en-US", "ja-JP", "", "ind", "idx-XX", "de-DE"] {
-            assert_eq!(from_locale(name), Lang::En, "{name}");
+        // en-US, ja-JP, de-DE, Arabic (0x0001) and zero.
+        for id in [0x0409, 0x0411, 0x0407, 0x0001, 0x0000] {
+            assert_eq!(from_langid(id), Lang::En, "{id:#06x}");
         }
     }
 
