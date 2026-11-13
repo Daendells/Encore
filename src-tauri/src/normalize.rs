@@ -16,16 +16,19 @@ const NEUTRAL: [&str; 9] =
 pub const MAX_INPUT_CHARS: usize = 300;
 const BRACKETS: [(char, char); 5] = [('(', ')'), ('[', ']'), ('（', '）'), ('［', '］'), ('【', '】')];
 const DASHES: [&str; 3] = [" - ", " – ", " — "];
+/// Where the end of a title may be cut: the dashes and the bar of "Title | Official MV".
+const TAIL_SEPARATORS: [&str; 4] = [" - ", " – ", " — ", " | "];
+/// A group or tail holding one of these is another recording or version, never a decoration.
+const QUALIFIERS: [&str; 6] = ["remix", "instrumental", "inst", "karaoke", "acapella", "a cappella"];
+/// What may follow a trailing "Official" for the whole phrase to go.
+const OFFICIAL_TAIL: [&str; 10] = ["music", "video", "audio", "lyric", "lyrics", "mv", "m/v", "visualizer", "hd", "4k"];
 
 /// Removes decorations but keeps case and script: "(Remastered 2011)", "- Live at X", "(feat. Y)" ...
 pub fn clean_title(s: &str) -> String {
     let groupless = collapse(&strip_groups(s));
     let mut rest = groupless.as_str();
-    while let Some((head, tail)) = split_dash(rest, true) {
-        if !is_decoration(tail, false) {
-            break;
-        }
-        rest = head.trim_end();
+    while let Some(shorter) = cut_tail(rest) {
+        rest = shorter.trim_end();
     }
     if rest.is_empty() {
         s.trim().to_string()
@@ -34,12 +37,52 @@ pub fn clean_title(s: &str) -> String {
     }
 }
 
+/// One cut off the end of a title: a trailing "Official Video" or "MV", "feat. X", or a decoration after a
+/// dash or bar. None when nothing is left to cut. Brackets are not looked into: `strip_groups` decided on them.
+fn cut_tail(s: &str) -> Option<&str> {
+    let lower = outside_brackets(s);
+    let official = lower.rfind(" official ").filter(|&at| {
+        let mut tail = lower[at..].split_whitespace().skip(1).peekable();
+        tail.peek().is_some() && tail.all(|w| OFFICIAL_TAIL.contains(&w))
+    });
+    let mv = lower.rfind(' ').filter(|&at| matches!(&lower[at + 1..], "mv" | "m/v"));
+    // "feat." before a dash belongs to the artist and stays.
+    let featured = featured_at(&lower).filter(|&at| split_dash(&s[at..], false, &DASHES).is_none());
+    let cut = [official, mv, featured].into_iter().flatten().min().map(|at| &s[..at]);
+    // A bare separator left over ("Song - Official Video" cut at "Official") goes too.
+    let cut = cut.map(|head| head.trim_end().trim_end_matches(['-', '–', '—', '|']).trim_end());
+    cut.or_else(|| split_dash(s, true, &TAIL_SEPARATORS).filter(|(_, tail)| is_decoration(tail, false)).map(|(head, _)| head))
+        .filter(|head| !head.is_empty())
+}
+
+/// Lowercase copy of `s` with everything inside brackets blanked to `_`, byte for byte, so offsets carry over.
+fn outside_brackets(s: &str) -> String {
+    let mut depth = 0usize;
+    s.chars()
+        .map(|c| {
+            if BRACKETS.iter().any(|b| b.0 == c) {
+                depth += 1;
+            }
+            let inside = depth > 0;
+            if BRACKETS.iter().any(|b| b.1 == c) {
+                depth = depth.saturating_sub(1);
+            }
+            if inside { "_".repeat(c.len_utf8()) } else { c.to_ascii_lowercase().to_string() }
+        })
+        .collect()
+}
+
+/// Where " feat", " ft." or " featuring" starts as a whole word in a lowercase string.
+fn featured_at(lower: &str) -> Option<usize> {
+    [" feat", " ft.", " featuring"].iter().filter_map(|p| find_word(lower, p)).min()
+}
+
 pub fn clean_artist(s: &str) -> String {
     let full = s.trim();
     let mut rest = full.strip_suffix(" - Topic").unwrap_or(full);
     rest = rest.strip_suffix("VEVO").unwrap_or(rest);
     let lower = rest.to_ascii_lowercase();
-    if let Some(at) = [" feat", " ft.", " featuring"].iter().filter_map(|p| find_word(&lower, p)).min() {
+    if let Some(at) = featured_at(&lower) {
         rest = &rest[..at];
     }
     let rest = rest.trim();
@@ -64,13 +107,17 @@ pub fn candidates(title: &str, artist: &str) -> Vec<(String, String)> {
     }
     let mut pairs = vec![(clean_title(title), clean_artist(artist))];
     let groupless = collapse(&strip_groups(title));
-    if let Some((left, right)) = split_dash(&groupless, false) {
+    if let Some((left, right)) = split_dash(&groupless, false, &DASHES) {
         let split = (clean_title(right), clean_artist(left));
         if !split.0.is_empty() && !split.1.is_empty() && split != pairs[0] {
             let spaceless = |s: &str| key(s).replace(' ', "");
             // The channel name repeats the left side ("KeaneVEVO"): the title is certainly "Artis - Judul".
             let at = if spaceless(&split.1) == spaceless(&pairs[0].1) { 0 } else { 1 };
             pairs.insert(at, split);
+            // "Artis - Judul (Official Video)" cleans to "Artis" when "Judul" reads like a decoration: that is no title.
+            if at == 0 && key(&pairs[1].0) == key(left) {
+                pairs.remove(1);
+            }
         }
     }
     pairs
@@ -119,25 +166,33 @@ fn group_end(s: &str, open: char, close: char) -> Option<usize> {
 }
 
 /// Splits at the first or the last spaced dash.
-fn split_dash(s: &str, last: bool) -> Option<(&str, &str)> {
-    let hits = DASHES.iter().filter_map(|d| if last { s.rfind(d) } else { s.find(d) }.map(|at| (at, d.len())));
+fn split_dash<'a>(s: &'a str, last: bool, separators: &[&str]) -> Option<(&'a str, &'a str)> {
+    let hits = separators.iter().filter_map(|d| if last { s.rfind(d) } else { s.find(d) }.map(|at| (at, d.len())));
     let (at, len) = if last { hits.max() } else { hits.min() }?;
     Some((&s[..at], &s[at + len..]))
 }
 
 fn is_decoration(content: &str, parenthesised: bool) -> bool {
     let content = content.trim().to_ascii_lowercase();
-    if is_year(&content)
+    if QUALIFIERS.iter().any(|w| find_word(&content, w).is_some()) {
+        return false;
+    }
+    if WEAK_DECORATIONS.iter().any(|w| find_word(&content, w).is_some()) {
+        // "(Japanese Version Official Video)" is another version whatever else it says, and so is "(🇯🇵 Ver.)".
+        let plain = content.chars().all(|c| c.is_alphanumeric() || c.is_whitespace() || c.is_ascii_punctuation());
+        let neutral = |w: &str| {
+            w.is_empty()
+                || WEAK_DECORATIONS.contains(&w)
+                || NEUTRAL.contains(&w)
+                || is_year(w)
+                || is_ordinal(w)
+                || DECORATIONS.iter().any(|d| d.trim_end_matches(['.', ' ']) == w)
+        };
+        return plain && content.split(|c: char| !c.is_alphanumeric() && c != '/').all(neutral);
+    }
+    is_year(&content)
         || DECORATIONS.iter().any(|w| find_word(&content, w).is_some())
         || (parenthesised && find_word(&content, "with ").is_some())
-    {
-        return true;
-    }
-    let neutral = |w: &str| {
-        w.is_empty() || WEAK_DECORATIONS.contains(&w) || NEUTRAL.contains(&w) || is_year(w) || is_ordinal(w)
-    };
-    WEAK_DECORATIONS.iter().any(|w| find_word(&content, w).is_some())
-        && content.split(|c: char| !c.is_alphanumeric()).all(neutral)
 }
 
 fn is_year(s: &str) -> bool {
@@ -265,6 +320,66 @@ mod tests {
             ("Song (Japanese Version) [Official Video]", "Song (Japanese Version)"),
         ] {
             assert_eq!(clean_title(input), want, "{input}");
+        }
+    }
+
+    #[test]
+    fn qualifiers_next_to_decorations_are_kept() {
+        for input in [
+            "Song (Japanese Version Official Video)",
+            "Song [English Ver. MV]",
+            "Song (Japanese Ver. M/V)",
+            "Song - Live (Japanese Version)",
+            "Song (Skrillex Remix feat. X)",
+            "Song (Skrillex Remix)",
+            "Song - Remix",
+            "Song (Instrumental)",
+            "Song [Karaoke]",
+            "Song (Acapella)",
+            "Song (A Cappella)",
+            "Song (Inst.)",
+            "Song (🇯🇵 Ver.)",
+        ] {
+            assert_eq!(clean_title(input), input, "{input}");
+        }
+        assert_eq!(clean_title("Song (Album Ver. M/V)"), "Song");
+        assert_eq!(clean_title("Song (Live Version)"), "Song");
+    }
+
+    #[test]
+    fn youtube_endings_outside_brackets_are_cut() {
+        for (input, want) in [
+            ("Song Official Video", "Song"),
+            ("Song Official Music Video", "Song"),
+            ("Song Official Audio", "Song"),
+            ("Song Official Lyric Video", "Song"),
+            ("Song Official Visualizer", "Song"),
+            ("Song MV", "Song"),
+            ("Song M/V", "Song"),
+            ("Artist - Song Official MV", "Artist - Song"),
+            ("Song | Official MV", "Song"),
+            ("Song | Official Video", "Song"),
+            ("Song ft. Someone", "Song"),
+            ("Song feat. Someone Else", "Song"),
+            ("Song Featuring Someone", "Song"),
+            ("Song ft. Someone Official Video", "Song"),
+            ("Artist feat. B - Song", "Artist feat. B - Song"),
+            ("Song | Artist", "Song | Artist"),
+            ("The Official Story", "The Official Story"),
+            ("Official Secrets", "Official Secrets"),
+            ("Soft. Cell", "Soft. Cell"),
+            ("MV", "MV"),
+        ] {
+            assert_eq!(clean_title(input), want, "{input}");
+        }
+    }
+
+    #[test]
+    fn candidates_never_collapse_the_title_to_the_artist() {
+        // The channel repeats the artist: "Oasis" by Oasis would be another song.
+        for channel in ["Oasis", "OasisVEVO", "Oasis - Topic"] {
+            let got = candidates("Oasis - Live Forever (Official Video)", channel);
+            assert_eq!(got, [pair("Live Forever", "Oasis")], "{channel}");
         }
     }
 

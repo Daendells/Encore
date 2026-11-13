@@ -275,6 +275,11 @@ mod tests {
             ("Song (Instrumental Version)", "Song"),
             ("Cupid - Twin Version", "Cupid"),
             ("Song -Japanese ver.-", "Song"),
+            ("Song (Japanese Version Official Video)", "Song"),
+            ("Song [English Ver. MV]", "Song"),
+            ("Song (🇯🇵 Ver.)", "Song"),
+            ("Song (Skrillex Remix feat. X)", "Song"),
+            ("Song - Live (Japanese Version)", "Song"),
         ] {
             let c = cand(1, theirs, "Artist", 200.0);
             assert_eq!(score(playing, "Artist", 200_000, &c), None, "{playing} / {theirs}");
