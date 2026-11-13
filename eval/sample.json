@@ -22,6 +22,61 @@
     "note": "Video title with the artist in front and a channel name as the artist"
   },
   {
+    "id": "yt-02",
+    "smtc_title": "Oasis - Wonderwall (Official Video)",
+    "smtc_artist": "OasisVEVO",
+    "smtc_album": "",
+    "duration_ms": 259000,
+    "expect": "match",
+    "expect_title": "Wonderwall",
+    "expect_artist": "Oasis",
+    "note": "VEVO channel, artist in front, bracketed Official Video"
+  },
+  {
+    "id": "yt-03",
+    "smtc_title": "Oasis - Live Forever (Official Video)",
+    "smtc_artist": "Oasis",
+    "smtc_album": "",
+    "duration_ms": 277000,
+    "expect": "match",
+    "expect_title": "Live Forever",
+    "expect_artist": "Oasis",
+    "note": "The title reads like a decoration: it must not collapse to the artist name"
+  },
+  {
+    "id": "yt-04",
+    "smtc_title": "Fix You",
+    "smtc_artist": "Coldplay - Topic",
+    "smtc_album": "",
+    "duration_ms": 296000,
+    "expect": "match",
+    "expect_title": "Fix You",
+    "expect_artist": "Coldplay",
+    "note": "Auto-generated Topic channel"
+  },
+  {
+    "id": "yt-05",
+    "smtc_title": "BLACKPINK - Kill This Love | Official MV",
+    "smtc_artist": "BLACKPINK",
+    "smtc_album": "",
+    "duration_ms": 192000,
+    "expect": "match",
+    "expect_title": "Kill This Love",
+    "expect_artist": "BLACKPINK",
+    "note": "Bar before Official MV"
+  },
+  {
+    "id": "yt-06",
+    "smtc_title": "Rick Astley - Never Gonna Give You Up Official Video",
+    "smtc_artist": "Rick Astley",
+    "smtc_album": "",
+    "duration_ms": 214000,
+    "expect": "match",
+    "expect_title": "Never Gonna Give You Up",
+    "expect_artist": "Rick Astley",
+    "note": "Official Video without brackets"
+  },
+  {
     "id": "none-01",
     "smtc_title": "Lagu Yang Tidak Ada 8271",
     "smtc_artist": "Tidak Ada Band",
