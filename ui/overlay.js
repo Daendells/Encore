@@ -15,7 +15,7 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 let showingLines = false;
 
 // The first size comes with the page (an event sent before this script listens would be lost).
-const firstPx = Number(window.__LARIK_FONT_PX__);
+const firstPx = Number(window.__ENCORE_FONT_PX__);
 if (Number.isFinite(firstPx) && firstPx > 0) document.documentElement.style.setProperty("--font", `${firstPx}px`);
 
 function setRow(row, text) {
@@ -94,7 +94,7 @@ function showLines(ui) {
   for (const span of pending) span.classList.add("on");
 
   showingLines = true;
-  if (window.__LARIK_TIMING__ === true) invoke("shown", { seq: ui.seq }).catch(() => {});
+  if (window.__ENCORE_TIMING__ === true) invoke("shown", { seq: ui.seq }).catch(() => {});
 }
 
 function showInfo(ui) {
@@ -144,7 +144,7 @@ listen("style", (event) => {
 // While Ctrl is held the window takes mouse input and the plate can be dragged.
 listen("drag", (event) => document.body.classList.toggle("drag", event.payload.on === true));
 
-// A key-up that never reached Larik must not leave the strip clickable: a mouse event without Ctrl ends the drag state.
+// A key-up that never reached Encore must not leave the strip clickable: a mouse event without Ctrl ends the drag state.
 function ctrlGone(event) {
   if (event.ctrlKey || !document.body.classList.contains("drag")) return false;
   invoke("ctrl_released").catch(() => {});

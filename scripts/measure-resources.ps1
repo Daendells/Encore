@@ -1,5 +1,5 @@
 # Usage: powershell -File scripts\measure-resources.ps1 -Seconds 300
-# Samples larik.exe and all its child processes (WebView2) while a song is playing: memory and CPU every 5 s,
+# Samples encore.exe and all its child processes (WebView2) while a song is playing: memory and CPU every 5 s,
 # TCP connections in a loop with a 200 ms pause (the mean interval actually reached is printed at the end).
 # The RAM figure to quote is private bytes (memory the app has committed); the working set is shown too,
 # but it counts DLL pages shared with other programs.
@@ -9,9 +9,9 @@ $interval = 5
 $pollMs = 200
 $cores = [Environment]::ProcessorCount
 
-# larik.exe and its descendants, each with a kind: larik, browser, renderer, gpu, network, storage, other.
+# encore.exe and its descendants, each with a kind: encore, browser, renderer, gpu, network, storage, other.
 function Get-Tree {
-    $root = Get-Process -Name larik -ErrorAction SilentlyContinue | Select-Object -First 1
+    $root = Get-Process -Name encore -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $root) { return @() }
     $all = Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CommandLine
     $ids = [System.Collections.Generic.HashSet[int]]::new()
@@ -23,7 +23,7 @@ function Get-Tree {
     foreach ($p in $all) {
         if (-not $ids.Contains([int]$p.ProcessId)) { continue }
         $c = [string]$p.CommandLine
-        $kind = if ($p.Name -eq 'larik.exe') { 'larik.exe' }
+        $kind = if ($p.Name -eq 'encore.exe') { 'encore.exe' }
         elseif ($c -match '--type=renderer') { 'renderer' }
         elseif ($c -match '--type=gpu-process') { 'gpu' }
         elseif ($c -match 'NetworkService') { 'network' }
@@ -35,7 +35,7 @@ function Get-Tree {
     }
 }
 
-if (-not (Get-Tree)) { Write-Error "larik.exe is not running"; exit 1 }
+if (-not (Get-Tree)) { Write-Error "encore.exe is not running"; exit 1 }
 
 $samples = @()
 $perKind = @{}   # kind -> list of { Private, WorkingSet } sums, one per sample
@@ -113,12 +113,12 @@ while ((Get-Date) -lt $end) {
     Start-Sleep -Milliseconds $pollMs
 }
 
-if (-not $samples) { Write-Error "no samples (larik.exe exited?)"; exit 1 }
+if (-not $samples) { Write-Error "no samples (encore.exe exited?)"; exit 1 }
 function Row($label, $values, $fmt) {
     $m = $values | Measure-Object -Average -Maximum
     "{0,-46} avg {1,9}   max {2,9}" -f $label, ($m.Average.ToString($fmt)), ($m.Maximum.ToString($fmt))
 }
-"Larik resource run: $($samples.Count) samples over $Seconds s, every $interval s, $cores logical cores"
+"Encore resource run: $($samples.Count) samples over $Seconds s, every $interval s, $cores logical cores"
 Row "CPU, % of all logical cores (Task Manager)" $samples.CpuAllCores "0.00"
 Row "CPU, % of one core" $samples.CpuOneCore "0.00"
 Row "RAM, private bytes sum of tree (MiB)" $samples.Private "0.0"

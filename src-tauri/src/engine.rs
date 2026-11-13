@@ -301,7 +301,7 @@ impl Engine {
                 self.accept(lyrics, host);
             }
             Err(e) => {
-                eprintln!("larik: lyrics lookup failed: {e}");
+                eprintln!("encore: lyrics lookup failed: {e}");
                 self.show_card(host);
             }
         }
@@ -619,7 +619,7 @@ mod tests {
 
         fn with(settings: Settings, log: Option<TimingLog>) -> Rig {
             let dir = std::env::temp_dir().join(format!(
-                "larik-engine-test-{}-{}",
+                "encore-engine-test-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));

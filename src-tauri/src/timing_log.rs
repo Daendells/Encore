@@ -1,9 +1,9 @@
-//! CSV log of when each line was told to the overlay, written only when `LARIK_TIMING_LOG` names a file.
+//! CSV log of when each line was told to the overlay, written only when `ENCORE_TIMING_LOG` names a file.
 
 use std::fs::OpenOptions;
 use std::io::Write;
 
-pub const ENV: &str = "LARIK_TIMING_LOG";
+pub const ENV: &str = "ENCORE_TIMING_LOG";
 pub const HEADER: &str = "kind,wall_ms,app,title,line_index,lrc_ms,pos_ms,extra";
 
 pub struct TimingLog {

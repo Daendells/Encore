@@ -5,7 +5,7 @@ use crate::lyrics::{Fetch, FetchError};
 use crate::matcher::Candidate;
 
 const BASE: &str = "https://lrclib.net";
-const USER_AGENT: &str = concat!("Larik/", env!("CARGO_PKG_VERSION"), " (https://github.com/Daendells/larik)");
+const USER_AGENT: &str = concat!("Encore/", env!("CARGO_PKG_VERSION"), " (https://github.com/Daendells/Lyrics)");
 const TIMEOUT: Duration = Duration::from_secs(10);
 /// A longer response is refused. A search for a song with long lyrics is about 1.3 MB: each of its 20 results
 /// repeats the lyrics three times.
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn user_agent_names_the_app_and_its_version() {
-        assert_eq!(USER_AGENT, "Larik/0.1.0 (https://github.com/Daendells/larik)");
+        assert_eq!(USER_AGENT, "Encore/0.1.0 (https://github.com/Daendells/Lyrics)");
     }
 
     #[test]

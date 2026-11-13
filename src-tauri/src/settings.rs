@@ -95,7 +95,7 @@ impl Store {
         // Written beside the file and renamed over it, so a crash never leaves half a file.
         if serde_json::to_vec_pretty(value).ok().is_some_and(|json| fs::write(&temp, json).is_ok()) {
             if let Err(e) = fs::rename(&temp, &path) {
-                eprintln!("larik: cannot save {}: {e}", path.display());
+                eprintln!("encore: cannot save {}: {e}", path.display());
             }
         }
     }
@@ -110,7 +110,7 @@ mod tests {
 
     impl Temp {
         fn new(test: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("larik-settings-test-{}-{test}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("encore-settings-test-{}-{test}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             Temp(Store::new(dir))
         }

@@ -5,10 +5,10 @@
 use std::process::ExitCode;
 use std::time::Duration;
 
-use larik_lib::lrclib::LrcLib;
-use larik_lib::lyrics::resolve;
-use larik_lib::matcher::{Candidate, Track};
-use larik_lib::normalize::{clean_artist, clean_title, key};
+use encore_lib::lrclib::LrcLib;
+use encore_lib::lyrics::resolve;
+use encore_lib::matcher::{Candidate, Track};
+use encore_lib::normalize::{clean_artist, clean_title, key};
 
 const PAUSE_BETWEEN_SONGS: Duration = Duration::from_millis(300);
 const OUTCOMES: [&str; 4] = ["correct", "missed", "wrong", "error"];

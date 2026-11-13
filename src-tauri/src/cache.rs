@@ -66,7 +66,7 @@ mod tests {
 
     impl Temp {
         fn new(test: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("larik-cache-test-{}-{test}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("encore-cache-test-{}-{test}", std::process::id()));
             let _ = fs::remove_dir_all(&dir);
             Temp(Cache::new(dir))
         }

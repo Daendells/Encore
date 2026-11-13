@@ -1,5 +1,5 @@
 // Usage: node scripts/timing-report.mjs <timing-log.csv>
-// Reads the CSV written when LARIK_TIMING_LOG is set (kind,wall_ms,app,title,line_index,lrc_ms,pos_ms,extra).
+// Reads the CSV written when ENCORE_TIMING_LOG is set (kind,wall_ms,app,title,line_index,lrc_ms,pos_ms,extra).
 // Prints, per app and overall: line timing error (pos_ms - lrc_ms) and clock drift (extra of numeric `sync` rows).
 // Only `shown` rows from the line timer count (extra "<seq> timer"). Rows from pause/resume, hide/show, nudge,
 // seek, settings reload or the first line of a song (extra "<seq> other") are not line starts and are excluded.

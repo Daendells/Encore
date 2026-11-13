@@ -264,7 +264,7 @@ pub fn restart_on_webview_failure(app: &AppHandle, window: &WebviewWindow) {
     let app = app.clone();
     let _ = window.with_webview(move |webview| {
         let Ok(core) = (unsafe { webview.controller().CoreWebView2() }) else {
-            eprintln!("larik: cannot watch WebView2 for failures, it will not be restarted");
+            eprintln!("encore: cannot watch WebView2 for failures, it will not be restarted");
             return;
         };
         let handler = webview2_com::ProcessFailedEventHandler::create(Box::new(move |_, args| {
@@ -275,31 +275,31 @@ pub fn restart_on_webview_failure(app: &AppHandle, window: &WebviewWindow) {
             let fatal = kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
                 || kind == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED;
             if !fatal {
-                eprintln!("larik: WebView2 process failed (kind {}), not restarting for this kind", kind.0);
+                eprintln!("encore: WebView2 process failed (kind {}), not restarting for this kind", kind.0);
                 return Ok(());
             }
             if EXITING.load(Ordering::SeqCst) {
                 return Ok(());
             }
             let Some(marker) = app.path().app_local_data_dir().ok().map(|dir| dir.join(RESTART_MARKER)) else {
-                eprintln!("larik: WebView2 process failed (kind {}), no data folder to record a restart", kind.0);
+                eprintln!("encore: WebView2 process failed (kind {}), no data folder to record a restart", kind.0);
                 return Ok(());
             };
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
             let last = std::fs::read_to_string(&marker).ok().and_then(|text| text.trim().parse::<u64>().ok());
             if !restart_allowed(last, now) {
-                eprintln!("larik: WebView2 process failed (kind {}), not restarting again so soon", kind.0);
+                eprintln!("encore: WebView2 process failed (kind {}), not restarting again so soon", kind.0);
             } else if std::fs::write(&marker, now.to_string()).is_err() {
-                eprintln!("larik: WebView2 process failed (kind {}), cannot record a restart, not restarting", kind.0);
+                eprintln!("encore: WebView2 process failed (kind {}), cannot record a restart, not restarting", kind.0);
             } else {
-                eprintln!("larik: WebView2 process failed (kind {}), restarting", kind.0);
+                eprintln!("encore: WebView2 process failed (kind {}), restarting", kind.0);
                 app.restart();
             }
             Ok(())
         }));
         let mut token = 0;
         if let Err(e) = unsafe { core.add_ProcessFailed(&handler, &mut token) } {
-            eprintln!("larik: cannot watch WebView2 for failures, it will not be restarted: {e}");
+            eprintln!("encore: cannot watch WebView2 for failures, it will not be restarted: {e}");
         }
     });
 }
@@ -370,7 +370,7 @@ pub(crate) fn set_ctrl(app: &AppHandle, down: bool) {
 
 // ---- Ctrl watch (spec B7) ----
 
-const CLASS: PCWSTR = w!("LarikCtrlWatch");
+const CLASS: PCWSTR = w!("EncoreCtrlWatch");
 /// The message-only window of the running watch, as an integer so it can sit in a static.
 static WATCH: Mutex<Option<(isize, thread::JoinHandle<()>)>> = Mutex::new(None);
 
@@ -441,7 +441,7 @@ unsafe fn create_watch_window() -> Option<HWND> {
     let hwnd = CreateWindowExW(
         WINDOW_EX_STYLE::default(),
         CLASS,
-        w!("Larik Ctrl watch"),
+        w!("Encore Ctrl watch"),
         WINDOW_STYLE::default(),
         0,
         0,

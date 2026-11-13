@@ -1,10 +1,10 @@
 [package]
-name = "larik"
+name = "encore"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "larik_lib"
+name = "encore_lib"
 
 # An example and not a second binary: Tauri puts every binary in the installer.
 [[example]]

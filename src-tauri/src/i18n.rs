@@ -11,10 +11,10 @@ pub fn from_langid(id: u16) -> Lang {
     if id & 0x3ff == 0x21 { Lang::Id } else { Lang::En }
 }
 
-/// The language Windows shows its own interface in. Debug builds also honour `LARIK_LANG=id|en`, for screenshots and tests.
+/// The language Windows shows its own interface in. Debug builds also honour `ENCORE_LANG=id|en`, for screenshots and tests.
 pub fn detect() -> Lang {
     if cfg!(debug_assertions) {
-        match std::env::var("LARIK_LANG").as_deref() {
+        match std::env::var("ENCORE_LANG").as_deref() {
             Ok("id") => return Lang::Id,
             Ok("en") => return Lang::En,
             _ => {}
@@ -36,7 +36,7 @@ const TEXTS: &[(&str, &str, &str)] = &[
     ("tray.autostart", "Mulai saat Windows menyala", "Start with Windows"),
     ("tray.settings", "Pengaturan", "Settings"),
     ("tray.quit", "Keluar", "Quit"),
-    ("settings.title", "Pengaturan Larik", "Larik settings"),
+    ("settings.title", "Pengaturan Encore", "Encore settings"),
     ("settings.size", "Ukuran teks", "Text size"),
     ("settings.offsets", "Geser waktu lirik per aplikasi", "Lyric timing per app"),
     (

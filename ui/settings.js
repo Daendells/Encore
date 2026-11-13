@@ -118,7 +118,7 @@ async function start() {
   text = await invoke("strings");
   document.documentElement.lang = text.lang ?? "en";
   for (const el of document.querySelectorAll("[data-t]")) el.textContent = text[el.dataset.t] ?? "";
-  document.title = text["settings.title"] ?? "Larik";
+  document.title = text["settings.title"] ?? "Encore";
   await load();
 }
 

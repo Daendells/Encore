@@ -94,25 +94,25 @@ pub fn setup(app: &AppHandle, tx: Sender<Msg>) -> tauri::Result<()> {
     let lang = lang(app);
     for (code, _, _, key) in SHORTCUTS {
         if app.global_shortcut().register(shortcut(code)).is_err() {
-            eprintln!("larik: the shortcut for \"{}\" is taken by another app", t(lang, key));
+            eprintln!("encore: the shortcut for \"{}\" is taken by another app", t(lang, key));
             app.state::<Shared>().unavailable.lock().unwrap_or_else(PoisonError::into_inner).insert(key);
         }
     }
 
     if let Err(e) = build_tray(app, &tx) {
-        eprintln!("larik: no tray icon, trying again in 3 seconds: {e}");
+        eprintln!("encore: no tray icon, trying again in 3 seconds: {e}");
         let app = app.clone();
         let spawned = thread::Builder::new().name("tray-retry".into()).spawn(move || {
             thread::sleep(std::time::Duration::from_secs(3));
             let on_main = app.clone();
             let _ = app.run_on_main_thread(move || {
                 if let Err(e) = build_tray(&on_main, &tx) {
-                    eprintln!("larik: still no tray icon, running without it: {e}");
+                    eprintln!("encore: still no tray icon, running without it: {e}");
                 }
             });
         });
         if spawned.is_err() {
-            eprintln!("larik: cannot retry the tray icon");
+            eprintln!("encore: cannot retry the tray icon");
         }
     }
     Ok(())
@@ -143,8 +143,8 @@ fn build_tray(app: &AppHandle, tx: &Sender<Msg>) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&toggle, &size_menu, &reset, &autostart, &line, &open, &quit])?;
 
     let click_tx = tx.clone();
-    let mut tray = TrayIconBuilder::with_id("larik")
-        .tooltip("Larik")
+    let mut tray = TrayIconBuilder::with_id("encore")
+        .tooltip("Encore")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id.as_ref() {

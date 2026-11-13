@@ -125,7 +125,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(move |_, _, _| {
             let _ = second_start.send(Msg::SetVisible(true));
         }))
-        .plugin(tauri_plugin_autostart::Builder::new().app_name("Larik").build())
+        .plugin(tauri_plugin_autostart::Builder::new().app_name("Encore").build())
         .plugin(shell::shortcut_plugin(shortcut_tx))
         .manage(tx)
         .manage(shell::Shared::new(i18n::detect()))
@@ -138,10 +138,10 @@ pub fn run() {
 
             let config = app.config().app.windows.iter().find(|w| w.label == "overlay").cloned();
             // The first font size goes in with the page: an event sent before the page listens is lost.
-            let mut script = format!("window.__LARIK_FONT_PX__ = {};", settings.font_px);
+            let mut script = format!("window.__ENCORE_FONT_PX__ = {};", settings.font_px);
             if timing.is_some() {
                 // Asks the overlay to answer every line with `shown`.
-                script.push_str("window.__LARIK_TIMING__ = true;");
+                script.push_str("window.__ENCORE_TIMING__ = true;");
             }
             let overlay = WebviewWindowBuilder::from_config(
                 app.handle(),
@@ -176,7 +176,7 @@ pub fn run() {
                 let watcher = smtc::Watcher::start(move || {
                     let _ = notify.send(Msg::SmtcChanged);
                 })
-                .map_err(|e| eprintln!("larik: cannot watch media sessions, running without lyrics: {e}"))
+                .map_err(|e| eprintln!("encore: cannot watch media sessions, running without lyrics: {e}"))
                 .ok();
                 let _ = engine_tx.send(Msg::SmtcChanged);
                 let host = TauriHost {
@@ -191,7 +191,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building Larik")
+        .expect("error while building Encore")
         .run(|_, event| {
             // Whatever ends the app (tray Quit, an exit request, logoff), WebView2 going away after it is no failure.
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
