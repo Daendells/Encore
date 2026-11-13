@@ -4,7 +4,7 @@ Encore menampilkan lirik lagu yang sedang Anda putar di Windows. Liriknya muncul
 
 ![Strip lirik Encore di atas taskbar](docs/screenshot.png)
 
-Kode dan unduhan ada di https://github.com/Daendells/Lyrics. Bahasa Indonesia ada di bawah ini, [English version below](#english).
+Kode dan unduhan ada di https://github.com/Daendells/Encore. Bahasa Indonesia ada di bawah ini, [English version below](#english).
 
 ## Cara kerja
 
@@ -114,7 +114,7 @@ MIT. Lihat [LICENSE](LICENSE). Hak cipta 2026 Daendells.
 
 Encore shows the lyrics of the song you are playing on Windows. They appear as a three-line strip just above the taskbar, always on top, and clicks pass through it. The current line lights up in time with the song.
 
-Code and downloads: https://github.com/Daendells/Lyrics
+Code and downloads: https://github.com/Daendells/Encore
 
 ## How it works
 
