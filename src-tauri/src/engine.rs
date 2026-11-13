@@ -229,10 +229,17 @@ impl Engine {
 
     /// Looks the current track up again after a network error: `restart` when the network changed (the schedule
     /// begins anew), otherwise it is the next scheduled retry. Nothing happens unless the last lookup failed,
-    /// and a lookup already running is not doubled.
+    /// and a lookup already running is not doubled (a network change still restarts the schedule after it).
     fn start_retry(&mut self, restart: bool, host: &dyn Host) {
         let Some(c) = self.cur.as_mut() else { return };
-        let Some(f) = c.failed.as_mut().filter(|f| !f.in_flight) else { return };
+        let Some(f) = c.failed.as_mut() else { return };
+        if f.in_flight {
+            // A lookup is running: it is not doubled, but if it fails the schedule starts again.
+            if restart {
+                f.retries = 0;
+            }
+            return;
+        }
         f.retries = if restart { 0 } else { f.retries + 1 };
         f.retry_at = None;
         f.in_flight = true;
@@ -1075,6 +1082,23 @@ mod tests {
         // A later network change starts the schedule again.
         r.step(Some(Msg::NetworkChanged));
         assert_eq!(r.h.fetched(), 5);
+        assert_eq!(r.lyrics(Err("offline".into())), Some(r.h.mono + 5_000.0));
+    }
+
+    #[test]
+    fn network_change_during_the_last_retry_restarts_the_schedule() {
+        let (mut r, failed) = failed_lookup();
+        for (i, at) in [5_000.0, 25_000.0, 85_000.0].into_iter().enumerate() {
+            r.h.mono = failed + at;
+            r.step(None);
+            assert_eq!(r.h.fetched(), i + 2);
+            if i < 2 {
+                r.lyrics(Err("offline".into()));
+            }
+        }
+        // The third retry is running when the network changes; it fails, and the schedule starts again.
+        r.step(Some(Msg::NetworkChanged));
+        assert_eq!(r.h.fetched(), 4);
         assert_eq!(r.lyrics(Err("offline".into())), Some(r.h.mono + 5_000.0));
     }
 
