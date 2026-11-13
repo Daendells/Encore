@@ -101,7 +101,7 @@ Installer ada di `src-tauri\target\release\bundle\nsis\`. Untuk menjalankan uji:
 | `Win+Alt+O` | Buka pengaturan |
 | `Ctrl` + seret | Geser strip, posisinya diingat |
 
-Ikon tray menyediakan tampilkan atau sembunyikan, gaya tampilan (Bawaan, Minimalis, Karaoke, Fokus), ukuran teks (kecil 18 px, sedang 22 px, besar 28 px), posisi (bawah tengah, atas tengah, kiri bawah, kanan bawah), kembalikan posisi ke bawah tengah, mulai saat Windows menyala, Pengaturan, dan keluar. Offset per aplikasi untuk keterlambatan tetap ada di pengaturan.
+Ikon tray menyediakan tampilkan atau sembunyikan, gaya (Bawaan, Minimalis, Karaoke, Fokus), ukuran teks (kecil 18 px, sedang 22 px, besar 28 px), posisi (bawah tengah, atas tengah, kiri bawah, kanan bawah), kembalikan posisi ke bawah tengah, mulai saat Windows menyala, Pengaturan, dan keluar. Offset per aplikasi untuk keterlambatan tetap ada di pengaturan.
 
 ## Privasi
 
@@ -198,7 +198,7 @@ The installer is in `src-tauri\target\release\bundle\nsis\`. To run the tests, g
 | `Win+Alt+O` | Open settings |
 | `Ctrl` + drag | Move the strip, the position is remembered |
 
-The tray icon offers show or hide, display style (Default, Minimal, Karaoke, Focus), text size (small 18 px, medium 22 px, large 28 px), position (bottom centre, top centre, bottom left, bottom right), reset position to bottom centre, start with Windows, Settings, and quit. A per-app offset for fixed delay is in settings.
+The tray icon offers show or hide, style (Default, Minimal, Karaoke, Focus), text size (small 18 px, medium 22 px, large 28 px), position (bottom centre, top centre, bottom left, bottom right), reset position to bottom centre, start with Windows, Settings, and quit. A per-app offset for fixed delay is in settings.
 
 ## Privacy
 

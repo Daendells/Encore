@@ -60,7 +60,7 @@ Tampilan strip bisa diubah di jendela pengaturan, bagian **Tampilan**, dan perub
 | Jumlah baris | 1 atau 3. Satu baris hanya menampilkan baris yang sedang dinyanyikan | 3 |
 | Ukuran teks | 12 sampai 48 px | 22 px |
 | Latar gelap di belakang teks | 0% sampai 70%. Di 0% tidak ada latar, teks tetap punya garis tepi hitam | 35% |
-| Lebar | 40% sampai 90% lebar layar | 60% |
+| Lebar | 40% sampai 90% dari lebar layar | 60% |
 | Warna baris yang sedang dinyanyikan | putih, kuning, hijau, biru. Baris lain tetap abu-abu | putih |
 
 Empat gaya mengatur semua nilai di atas sekaligus. Geseran waktu per aplikasi dan per lagu serta pilihan sembunyikan dari tangkapan layar tidak berubah.
@@ -79,7 +79,7 @@ Gaya yang aktif ditandai di jendela pengaturan dan di menu tray. Kalau Anda meng
 Klik kiri ikon tray menampilkan atau menyembunyikan strip. Klik kanan membuka menu:
 
 - Tampilkan atau sembunyikan lirik
-- Tampilan: Bawaan, Minimalis, Karaoke, Fokus (yang aktif diberi tanda centang)
+- Gaya: Bawaan, Minimalis, Karaoke, Fokus (yang aktif diberi tanda centang)
 - Ukuran teks: kecil (18 px), sedang (22 px), besar (28 px)
 - Posisi: bawah tengah, atas tengah, kiri bawah, kanan bawah
 - Kembalikan posisi ke bawah tengah
