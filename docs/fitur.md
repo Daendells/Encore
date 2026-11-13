@@ -8,9 +8,9 @@ Lirik biasanya ada di jendela pemutar atau di situs lain. Untuk membacanya, Anda
 
 ## Tampilan strip
 
-Strip menampilkan tiga baris: baris sebelumnya, baris yang sedang dinyanyikan, dan baris berikutnya.
+Strip menampilkan tiga baris: baris sebelumnya, baris yang sedang dinyanyikan, dan baris berikutnya. Anda bisa menampilkan satu baris saja.
 
-- Lebar strip paling besar 60% lebar layar, rata tengah. Baris yang lebih panjang dibungkus paling banyak 2 baris.
+- Lebar strip bawaannya 60% lebar layar, rata tengah. Baris yang lebih panjang dibungkus paling banyak 2 baris.
 - Baris sekarang berukuran 22 px (bawaan), tebal, dan putih. Baris sebelum dan sesudahnya berukuran 70% dari itu dan berwarna abu-abu.
 - Pergantian baris memakai gerakan singkat (180 ms). Gerakan ini mati kalau Windows diatur untuk mengurangi animasi.
 
@@ -50,12 +50,38 @@ Secara bawaan klik menembus strip, dan strip tidak mengambil fokus dari jendela 
 
 Untuk mengembalikan strip ke bawah tengah, pakai menu tray.
 
+## Gaya dan pengaturan tampilan
+
+Tampilan strip bisa diubah di jendela pengaturan, bagian **Tampilan**, dan perubahannya langsung terlihat di strip.
+
+| Pengaturan | Pilihan | Bawaan |
+|---|---|---|
+| Posisi | bawah tengah, atas tengah, kiri bawah, kanan bawah. Strip yang digeser dengan `Ctrl` tercatat sebagai "digeser sendiri" | bawah tengah |
+| Jumlah baris | 1 atau 3. Satu baris hanya menampilkan baris yang sedang dinyanyikan | 3 |
+| Ukuran teks | 12 sampai 48 px | 22 px |
+| Latar gelap di belakang teks | 0% sampai 70%. Di 0% tidak ada latar, teks tetap punya garis tepi hitam | 35% |
+| Lebar | 40% sampai 90% lebar layar | 60% |
+| Warna baris yang sedang dinyanyikan | putih, kuning, hijau, biru. Baris lain tetap abu-abu | putih |
+
+Empat gaya mengatur semua nilai di atas sekaligus. Geseran waktu per aplikasi dan per lagu serta pilihan sembunyikan dari tangkapan layar tidak berubah.
+
+| Gaya | Posisi | Baris | Ukuran | Latar | Lebar | Warna |
+|---|---|---|---|---|---|---|
+| Bawaan | bawah tengah | 3 | 22 px | 35% | 60% | putih |
+| Minimalis | bawah tengah | 1 | 20 px | 0% | 60% | putih |
+| Karaoke | bawah tengah | 3 | 30 px | 55% | 80% | kuning |
+| Fokus | atas tengah | 1 | 22 px | 25% | 50% | biru |
+
+Gaya yang aktif ditandai di jendela pengaturan dan di menu tray. Kalau Anda mengubah salah satu nilainya, gayanya menjadi "Kustom". Tombol **Kembalikan ke bawaan** memasang gaya Bawaan. Semua warna punya kontras minimal 4,5:1 terhadap garis tepi hitam (putih 21:1, kuning 14,9:1, hijau 14,1:1, biru 12,9:1).
+
 ## Menu tray
 
 Klik kiri ikon tray menampilkan atau menyembunyikan strip. Klik kanan membuka menu:
 
 - Tampilkan atau sembunyikan lirik
+- Tampilan: Bawaan, Minimalis, Karaoke, Fokus (yang aktif diberi tanda centang)
 - Ukuran teks: kecil (18 px), sedang (22 px), besar (28 px)
+- Posisi: bawah tengah, atas tengah, kiri bawah, kanan bawah
 - Kembalikan posisi ke bawah tengah
 - Mulai saat Windows menyala
 - Pengaturan
@@ -65,7 +91,7 @@ Klik kiri ikon tray menampilkan atau menyembunyikan strip. Klik kanan membuka me
 
 Buka dengan `Win+Alt+O` atau dari tray. Isinya:
 
-- **Ukuran teks**, dari 12 sampai 48 px.
+- **Tampilan**: gaya, posisi, jumlah baris, ukuran teks, latar gelap, lebar, dan warna baris yang sedang dinyanyikan (lihat bagian di atas), serta tombol untuk kembali ke bawaan.
 - **Geser waktu lirik per aplikasi**, dari -2.000 sampai 2.000 ms. Daftarnya berisi pemutar yang terdeteksi sejak Encore dijalankan, ditambah pemutar yang sudah punya geseran tersimpan. Angka positif membuat lirik muncul lebih awal.
 - **Sembunyikan lirik dari berbagi layar dan tangkapan layar.**
 - **Mulai saat Windows menyala.**
@@ -143,7 +169,7 @@ Semuanya ada di `%LOCALAPPDATA%\io.github.daendells.encore`:
 
 | Berkas | Isi |
 |---|---|
-| `settings.json` | Ukuran teks, strip tampil atau tidak, sembunyikan dari tangkapan, posisi, geseran per aplikasi |
+| `settings.json` | Pengaturan tampilan (posisi, jumlah baris, ukuran teks, latar, lebar, warna), strip tampil atau tidak, sembunyikan dari tangkapan, geseran per aplikasi |
 | `offsets.json` | Geseran per lagu |
 | `cache\` | Lirik, satu berkas per lagu. Hasil "tidak ditemukan" disimpan 7 hari. Kesalahan jaringan tidak disimpan, jadi lagu itu dicoba lagi saat diputar berikutnya |
 

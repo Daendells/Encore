@@ -21,7 +21,8 @@ Lirik disimpan di folder data aplikasi (`%LOCALAPPDATA%\io.github.daendells.enco
 
 ### Tampilan
 
-- Lebar strip paling besar 60% lebar layar, rata tengah. Baris yang lebih panjang dibungkus paling banyak 2 baris.
+- Lebar strip bawaannya 60% lebar layar (bisa 40% sampai 90%), rata tengah. Baris yang lebih panjang dibungkus paling banyak 2 baris.
+- Pengaturan tampilan: posisi (bawah tengah, atas tengah, kiri bawah, kanan bawah), satu atau tiga baris, ukuran teks, latar gelap 0% sampai 70%, lebar, dan warna baris yang sedang dinyanyikan (putih, kuning, hijau, biru). Empat gaya siap pakai mengatur semuanya sekaligus: Bawaan, Minimalis (1 baris, tanpa latar), Karaoke (30 px, latar 55%, lebar 80%, kuning), dan Fokus (atas tengah, 1 baris, biru). Mengubah satu nilai membuat gayanya "Kustom". Rinciannya ada di [docs/fitur.md](docs/fitur.md).
 - Baris sekarang berukuran 22 px (bawaan), semibold, putih. Baris sebelumnya dan berikutnya berukuran 70% dari itu. Keduanya abu-abu pekat (#a8a8a8 dan #c8c8c8), bukan putih transparan, supaya garis tepi hitam 1 px tidak tembus pandang.
 - Kontras 4,5:1 atau lebih di atas latar terang maupun gelap dicapai oleh garis tepi hitam itu, tidak oleh pelat latar saja. Pelat latarnya `rgba(0,0,0,.35)` dengan sudut 12 px.
 - Lagu instrumental, intro lebih dari 5 detik, atau jeda lebih dari 20 detik antar baris ditandai dengan "♪". Kalau lirik tidak ditemukan, judul dan artis tampil 3 detik lalu strip hilang sendiri.
@@ -100,7 +101,7 @@ Installer ada di `src-tauri\target\release\bundle\nsis\`. Untuk menjalankan uji:
 | `Win+Alt+O` | Buka pengaturan |
 | `Ctrl` + seret | Geser strip, posisinya diingat |
 
-Ikon tray menyediakan tampilkan atau sembunyikan, ukuran teks (kecil 18 px, sedang 22 px, besar 28 px), kembalikan posisi ke bawah tengah, mulai saat Windows menyala, Pengaturan, dan keluar. Offset per aplikasi untuk keterlambatan tetap ada di pengaturan.
+Ikon tray menyediakan tampilkan atau sembunyikan, gaya tampilan (Bawaan, Minimalis, Karaoke, Fokus), ukuran teks (kecil 18 px, sedang 22 px, besar 28 px), posisi (bawah tengah, atas tengah, kiri bawah, kanan bawah), kembalikan posisi ke bawah tengah, mulai saat Windows menyala, Pengaturan, dan keluar. Offset per aplikasi untuk keterlambatan tetap ada di pengaturan.
 
 ## Privasi
 
@@ -133,7 +134,8 @@ Lyrics are cached in the app data folder (`%LOCALAPPDATA%\io.github.daendells.en
 
 ### Appearance
 
-- The strip is at most 60% of the screen width, centred. Longer lines wrap onto at most 2 lines.
+- The strip is 60% of the screen width by default (40% to 90%), centred. Longer lines wrap onto at most 2 lines.
+- Display settings: position (bottom centre, top centre, bottom left, bottom right), one or three lines, text size, dark background 0% to 70%, width, and the colour of the line being sung (white, yellow, green, blue). Four ready-made styles set everything at once: Default, Minimal (1 line, no background), Karaoke (30 px, 55% background, 80% wide, yellow) and Focus (top centre, 1 line, blue). Changing any one value makes the style Custom. Details are in [docs/fitur.md](docs/fitur.md) (Indonesian).
 - The current line is 22 px by default, semibold, white. The previous and next lines are 70% of that size in opaque grey (#a8a8a8 and #c8c8c8) instead of translucent white, so the 1 px black outline is never see-through.
 - A contrast of 4.5:1 or more over both light and dark backgrounds comes from that black outline, not from the plate alone. The plate is `rgba(0,0,0,.35)` with 12 px corners.
 - Instrumentals, intros longer than 5 seconds and gaps longer than 20 seconds between lines show "♪". If no lyrics are found, title and artist show for 3 seconds and the strip hides itself.
@@ -196,7 +198,7 @@ The installer is in `src-tauri\target\release\bundle\nsis\`. To run the tests, g
 | `Win+Alt+O` | Open settings |
 | `Ctrl` + drag | Move the strip, the position is remembered |
 
-The tray icon offers show or hide, text size (small 18 px, medium 22 px, large 28 px), reset position to bottom centre, start with Windows, Settings, and quit. A per-app offset for fixed delay is in settings.
+The tray icon offers show or hide, display style (Default, Minimal, Karaoke, Focus), text size (small 18 px, medium 22 px, large 28 px), position (bottom centre, top centre, bottom left, bottom right), reset position to bottom centre, start with Windows, Settings, and quit. A per-app offset for fixed delay is in settings.
 
 ## Privacy
 
