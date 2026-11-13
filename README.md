@@ -6,6 +6,8 @@ Encore menampilkan lirik lagu yang sedang Anda putar di Windows. Liriknya muncul
 
 Kode dan unduhan ada di https://github.com/Daendells/Encore. Bahasa Indonesia ada di bawah ini, [English version below](#english).
 
+Penjelasan semua fitur ada di [docs/fitur.md](docs/fitur.md), panduan pengembangan (bahasa Inggris) di [docs/development.md](docs/development.md).
+
 ## Cara kerja
 
 1. Encore membaca judul, artis, album, durasi, posisi, dan status putar dari kontrol media Windows (SMTC). Tidak ada login dan tidak memakai API Spotify. Pada uji, Spotify desktop dan Chrome (YouTube, YouTube Music) memberi data ini.
@@ -115,6 +117,8 @@ MIT. Lihat [LICENSE](LICENSE). Hak cipta 2026 Daendells.
 Encore shows the lyrics of the song you are playing on Windows. They appear as a three-line strip just above the taskbar, always on top, and clicks pass through it. The current line lights up in time with the song.
 
 Code and downloads: https://github.com/Daendells/Encore
+
+A full feature description (in Indonesian) is in [docs/fitur.md](docs/fitur.md), and the development guide is in [docs/development.md](docs/development.md).
 
 ## How it works
 
