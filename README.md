@@ -35,7 +35,7 @@ Semua angka diukur pada versi rilis (`npm run tauri build`) dengan satu lagu dip
 | CPU saat lagu jalan | rata-rata kurang dari 1% | TODO-ANGKA % | Persen dari seluruh inti logis (seperti Task Manager). Persen dari satu inti: TODO-ANGKA % |
 | RAM seluruh proses (private bytes) | kurang dari 80 MiB | TODO-ANGKA MiB | Jumlah Larik dan semua proses WebView2 miliknya |
 | RAM seluruh proses (working set) | tanpa target | TODO-ANGKA MiB | Lebih besar karena menghitung halaman yang dipakai bersama |
-| Ukuran installer | kurang dari 15 MiB | 1,75 MiB (1.834.012 byte) | `Larik_0.1.0_x64-setup.exe` |
+| Ukuran installer | kurang dari 15 MiB | 1,75 MiB (1.839.683 byte) | `Larik_0.1.0_x64-setup.exe` |
 | Salah cocok pada 50 lagu uji | 0 | TODO-ANGKA | Lagu yang mendapat lirik lagu lain |
 | Lagu uji yang mendapat lirik | tanpa target | TODO-ANGKA dari 50 | Sisanya tidak ditemukan |
 | Alamat tujuan jaringan selain LRCLIB | 0 | TODO-ANGKA | Alamat TCP yang terlihat selama pengukuran (TCP saja, dicuplik kira-kira tiap 350 milidetik. Koneksi singkat dan UDP/QUIC tidak terlihat) |
@@ -142,7 +142,7 @@ All numbers come from a release build (`npm run tauri build`) playing one song f
 | CPU while a song plays | mean under 1% | TODO-ANGKA % | Percent of all logical cores (as in Task Manager). Percent of one core: TODO-ANGKA % |
 | RAM of all processes (private bytes) | under 80 MiB | TODO-ANGKA MiB | Larik plus all its WebView2 processes |
 | RAM of all processes (working set) | no target | TODO-ANGKA MiB | Larger because it counts shared pages |
-| Installer size | under 15 MiB | 1.75 MiB (1,834,012 bytes) | `Larik_0.1.0_x64-setup.exe` |
+| Installer size | under 15 MiB | 1.75 MiB (1,839,683 bytes) | `Larik_0.1.0_x64-setup.exe` |
 | Wrong matches in the 50-song test set | 0 | TODO-ANGKA | Songs that received another song's lyrics |
 | Test songs that got lyrics | no target | TODO-ANGKA of 50 | The rest were not found |
 | Network destinations other than LRCLIB | 0 | TODO-ANGKA | TCP addresses seen during the measurement (TCP only, sampled about every 350 ms. Short connections and UDP/QUIC are not seen) |
