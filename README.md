@@ -114,6 +114,8 @@ MIT. Lihat [LICENSE](LICENSE). Hak cipta 2026 Daendells.
 
 Encore shows the lyrics of the song you are playing on Windows. They appear as a three-line strip just above the taskbar, always on top, and clicks pass through it. The current line lights up in time with the song.
 
+Code and downloads: https://github.com/Daendells/Lyrics
+
 ## How it works
 
 1. Encore reads title, artist, album, duration, position and play state from the Windows media controls (SMTC). No login, no Spotify API. In testing, desktop Spotify and Chrome (YouTube, YouTube Music) provide this data.
