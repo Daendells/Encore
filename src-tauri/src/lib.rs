@@ -32,13 +32,15 @@ fn running(fetching: &Mutex<HashSet<String>>) -> MutexGuard<'_, HashSet<String>>
 /// LRCLIB and its memory small. All windows must use the same string, because they share one WebView2
 /// profile and WebView2 refuses to open a window whose flags differ.
 /// - `msOneAuthWAM,msForceOneAuthWAM`: with these on, WebView2 signs the Windows account in to Microsoft
+/// - `DnsOverHttpsUpgrade`: without it, when the system DNS server is a known one (here Google), Chromium
+///   switches to DNS over HTTPS and connects to 8.8.8.8 and 8.8.4.4 on port 443 a few seconds after start.
 ///   services at start (a connection to substrate.office.com). Both must be off, either one alone is not enough.
 /// - `--disable-gpu`: no GPU, so the strip is drawn in software. This removes about 60 MB of GPU process
 ///   and the plate stays transparent. The strip is three lines of text, so nothing is lost.
 /// - `--single-process`: the page, network and storage run inside the WebView2 browser process instead of
 ///   four more processes (about 40 MB less). Microsoft does not document this flag. A crash of the page
 ///   then takes the whole WebView2 down; `overlay::restart_on_webview_failure` restarts the app when that happens.
-pub const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OptimizationHints,msOneAuthWAM,msForceOneAuthWAM --disable-background-networking --disable-component-update --disable-gpu --single-process";
+pub const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,OptimizationHints,msOneAuthWAM,msForceOneAuthWAM,DnsOverHttpsUpgrade --disable-background-networking --disable-component-update --disable-gpu --single-process";
 
 /// The engine's view of the machine: the overlay window, SMTC, LRCLIB and the clocks.
 struct TauriHost {

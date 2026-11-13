@@ -71,7 +71,7 @@ Log waktu hanya aktif kalau `LARIK_TIMING_LOG` diisi. Yang dihitung hanya baris 
 - Chrome hanya melapor posisi saat play, pause, seek, dan ganti lagu. Larik menghitung sisanya sendiri. Pada uji awal, hasil hitungan itu berselisih 50 sampai 85 ms dari laporan berikutnya.
 - Pintasan `Win+Alt+...` bisa bentrok dengan aplikasi lain. Pintasan yang bentrok tidak aktif, dan jendela pengaturan menandai pintasan yang dipakai aplikasi lain. Larik tetap jalan.
 - Supaya RAM tetap di bawah 80 MiB, WebView2 untuk strip berjalan dalam mode satu proses. Microsoft tidak mendukung mode ini secara resmi. Kalau WebView2 mogok, Larik memulai ulang dirinya sendiri, paling sering sekali tiap 30 detik.
-- Dua pengaturan WebView2 yang tidak terdokumentasi mencegah koneksi ke Microsoft (substrate.office.com) saat Larik dimulai. Pembaruan WebView2 bisa mengubah ini, jadi pemeriksaan jaringan perlu diulang setelah WebView2 diperbarui.
+- Tiga pengaturan WebView2 yang tidak terdokumentasi mencegah dua koneksi di awal: ke Microsoft (substrate.office.com) dan ke DNS publik Google (8.8.8.8 dan 8.8.4.4, DNS lewat HTTPS). Pembaruan WebView2 bisa mengubah ini, jadi pemeriksaan jaringan perlu diulang setelah WebView2 diperbarui.
 - Hanya Windows. Tidak ada macOS atau Linux.
 
 ## Pemasangan
@@ -162,7 +162,7 @@ To measure again, use the PowerShell commands in the Indonesian section above (t
 - Chrome reports position only on play, pause, seek and track change. Larik computes the rest. In the early test, that computed position differed by 50 to 85 ms from the next report.
 - `Win+Alt+...` shortcuts can clash with other apps. A clashing shortcut stays inactive, and the settings window marks shortcuts taken by another app. Larik keeps running.
 - To stay under 80 MiB of RAM, the strip runs WebView2 in single-process mode, which Microsoft does not officially support. If WebView2 crashes, Larik restarts itself, at most once every 30 seconds.
-- Two undocumented WebView2 feature switches stop a connection to Microsoft (substrate.office.com) at start. A WebView2 update may change this, so repeat the network check after updates.
+- Three undocumented WebView2 feature switches stop two connections at start: one to Microsoft (substrate.office.com) and one to Google public DNS (8.8.8.8 and 8.8.4.4, DNS over HTTPS). A WebView2 update may change this, so repeat the network check after updates.
 - Windows only. No macOS or Linux.
 
 ## Install and build
