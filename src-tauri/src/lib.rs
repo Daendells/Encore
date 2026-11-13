@@ -14,6 +14,7 @@ pub mod lrc;
 pub mod lrclib;
 pub mod lyrics;
 pub mod matcher;
+pub mod network;
 pub mod normalize;
 pub mod overlay;
 pub mod schedule;
@@ -48,6 +49,8 @@ struct TauriHost {
     tx: Sender<Msg>,
     /// None when SMTC could not be started: the app then runs without lyrics.
     watcher: Option<smtc::Watcher>,
+    /// Held so that the subscription lasts as long as the engine thread.
+    _network: Option<network::NetworkWatcher>,
     start: Instant,
     /// Keys with a lookup running, so one song is never looked up twice at the same time.
     fetching: Arc<Mutex<HashSet<String>>>,
@@ -178,11 +181,18 @@ pub fn run() {
                 })
                 .map_err(|e| eprintln!("encore: cannot watch media sessions, running without lyrics: {e}"))
                 .ok();
+                let notify = engine_tx.clone();
+                let network = network::NetworkWatcher::start(move || {
+                    let _ = notify.send(Msg::NetworkChanged);
+                })
+                .map_err(|e| eprintln!("encore: cannot watch the network, no retry on reconnect: {e}"))
+                .ok();
                 let _ = engine_tx.send(Msg::SmtcChanged);
                 let host = TauriHost {
                     app,
                     tx: engine_tx,
                     watcher,
+                    _network: network,
                     start: Instant::now(),
                     fetching: Arc::default(),
                 };

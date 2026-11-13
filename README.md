@@ -17,7 +17,7 @@ Penjelasan semua fitur ada di [docs/fitur.md](docs/fitur.md), panduan pengembang
 5. Satu timer dibuat untuk baris berikutnya dan dihitung ulang setiap sinkronisasi. Tidak ada polling cepat. Saat strip disembunyikan atau tidak ada lagu, tidak ada timer yang jalan dan jendela strip tidak menggambar. Pendengar SMTC tetap aktif, dan lagu baru tetap dicari liriknya supaya siap begitu strip ditampilkan lagi.
 6. Jendela strip (WebView2) hanya menggambar. Pergantian baris memakai transisi CSS 180 ms, dan transisi dimatikan kalau Windows diatur untuk mengurangi gerakan. Lirik yang punya waktu per kata (enhanced LRC) disorot kata demi kata. Lirik tanpa waktu per kata menyala per baris.
 
-Lirik disimpan di folder data aplikasi (`%LOCALAPPDATA%\io.github.daendells.encore`), satu file per lagu. Hasil "tidak ditemukan" disimpan 7 hari. Kesalahan jaringan tidak disimpan, jadi lagu itu dicoba lagi saat diputar berikutnya.
+Lirik disimpan di folder data aplikasi (`%LOCALAPPDATA%\io.github.daendells.encore`), satu file per lagu. Hasil "tidak ditemukan" disimpan 7 hari. Kesalahan jaringan tidak disimpan, jadi lagu itu dicoba lagi saat diputar berikutnya. Kalau internet putus, Encore mencari lagi liriknya saat koneksi kembali.
 
 ### Tampilan
 
@@ -129,7 +129,7 @@ A full feature description (in Indonesian) is in [docs/fitur.md](docs/fitur.md),
 5. One timer is set for the next line and recomputed on every sync. There is no fast polling. While the strip is hidden or nothing is playing, no timer runs and the strip window draws nothing. The SMTC listeners stay active, and new songs are still looked up so their lyrics are ready when the strip comes back.
 6. The strip window (WebView2) only draws. Line changes use a 180 ms CSS transition, which is off when Windows is set to reduce motion. Lyrics with per-word timing (enhanced LRC) are highlighted word by word. Lyrics without it light up line by line.
 
-Lyrics are cached in the app data folder (`%LOCALAPPDATA%\io.github.daendells.encore`), one file per song. "Not found" results are kept for 7 days. Network errors are not stored, so the song is retried on its next play.
+Lyrics are cached in the app data folder (`%LOCALAPPDATA%\io.github.daendells.encore`), one file per song. "Not found" results are kept for 7 days. Network errors are not stored, so the song is retried on its next play. If the internet drops, Encore looks up the song again when the connection returns.
 
 ### Appearance
 

@@ -30,6 +30,8 @@ Strip menampilkan "♪" dalam tiga keadaan:
 
 Kalau lirik tidak ada, strip menampilkan judul dan artis selama 3 detik, lalu hilang sendiri. Dengan begitu Anda tahu Encore sudah membaca lagunya, tetapi tidak punya liriknya.
 
+Kalau internet putus, Encore mencari lagi liriknya saat koneksi kembali.
+
 ## Pintasan keyboard
 
 | Pintasan | Fungsi |

@@ -28,10 +28,15 @@ const DURATION_TOLERANCE_MS: u32 = 2_000;
 const CONFIRM_MS: f64 = 600.0;
 const LAST_WORD_MS: f64 = 500.0;
 const NOTE: &str = "♪";
+/// After a failed lookup (network error) the same track is looked up again after each of these, counted from the
+/// failure before it. After the last one fails the engine waits for the network to change.
+const RETRY_DELAYS_MS: [f64; 3] = [5_000.0, 20_000.0, 60_000.0];
 
 #[derive(Debug)]
 pub enum Msg {
     SmtcChanged,
+    /// Windows reported a change of network connection.
+    NetworkChanged,
     Lyrics { key: String, result: Result<Lyrics, String> },
     ToggleVisible,
     SetVisible(bool),
@@ -91,6 +96,17 @@ struct Current {
     track: Track,
     content: Content,
     song_offset_ms: i32,
+    /// Set while the last lookup ended in a network error. Dropping the `Current` cancels the retries.
+    failed: Option<Failed>,
+}
+
+struct Failed {
+    /// Lookups started again since the first failure or the last network change.
+    retries: usize,
+    /// When the next scheduled retry runs.
+    retry_at: Option<f64>,
+    /// A retry is running; its result is awaited.
+    in_flight: bool,
 }
 
 /// What the overlay was last told.
@@ -166,13 +182,15 @@ impl Engine {
             self.handle(msg, host);
         }
         self.fire_due(host);
-        [self.read_at, self.line_at, self.card_at, self.hold_until].into_iter().flatten().reduce(f64::min)
+        let retry_at = self.cur.as_ref().and_then(|c| c.failed.as_ref()?.retry_at);
+        [self.read_at, self.line_at, self.card_at, self.hold_until, retry_at].into_iter().flatten().reduce(f64::min)
     }
 
     fn handle(&mut self, msg: Msg, host: &mut dyn Host) {
         match msg {
             // An open window is not extended, so a burst of events costs one read.
             Msg::SmtcChanged => _ = self.read_at.get_or_insert(host.now_mono_ms() + COALESCE_MS),
+            Msg::NetworkChanged => self.start_retry(true, host),
             Msg::Lyrics { key, result } => self.lyrics_arrived(&key, result, host),
             Msg::ToggleVisible => self.set_visible(!self.settings.visible, host),
             Msg::SetVisible(visible) => self.set_visible(visible, host),
@@ -200,10 +218,26 @@ impl Engine {
             self.card_at = None;
             self.apply_visibility(host);
         }
+        if self.cur.as_ref().and_then(|c| c.failed.as_ref()?.retry_at).is_some_and(|t| host.now_mono_ms() >= t) {
+            self.start_retry(false, host);
+        }
         if due(self.line_at, host) {
             self.line_at = None;
             self.render(host, How::Timer);
         }
+    }
+
+    /// Looks the current track up again after a network error: `restart` when the network changed (the schedule
+    /// begins anew), otherwise it is the next scheduled retry. Nothing happens unless the last lookup failed,
+    /// and a lookup already running is not doubled.
+    fn start_retry(&mut self, restart: bool, host: &dyn Host) {
+        let Some(c) = self.cur.as_mut() else { return };
+        let Some(f) = c.failed.as_mut().filter(|f| !f.in_flight) else { return };
+        f.retries = if restart { 0 } else { f.retries + 1 };
+        f.retry_at = None;
+        f.in_flight = true;
+        eprintln!("encore: looking up the lyrics again");
+        host.fetch_lyrics(c.key.clone(), c.track.clone());
     }
 
     /// Reads the session once and brings the engine in line with it.
@@ -245,7 +279,7 @@ impl Engine {
         });
         if let Some((key, track)) = &fresh {
             let song_offset_ms = self.store.song_offset_ms(key);
-            self.cur = Some(Current { key: key.clone(), track: track.clone(), content: Content::Loading, song_offset_ms });
+            self.cur = Some(Current { key: key.clone(), track: track.clone(), content: Content::Loading, song_offset_ms, failed: None });
         }
         let extra = match sync {
             clock::Sync::First => "first".to_string(),
@@ -292,17 +326,27 @@ impl Engine {
 
     fn lyrics_arrived(&mut self, key: &str, result: Result<Lyrics, String>, host: &dyn Host) {
         // A result for another track, or one we no longer wait for, is dropped.
-        let Some(c) = self.cur.as_ref().filter(|c| c.key == key && matches!(c.content, Content::Loading)) else {
+        let Some(c) = self.cur.as_mut().filter(|c| {
+            c.key == key && (matches!(c.content, Content::Loading) || c.failed.as_ref().is_some_and(|f| f.in_flight))
+        }) else {
             return;
         };
         match result {
             Ok(lyrics) => {
+                c.failed = None;
                 self.cache.put(&c.track, &lyrics, wall_secs(host.now_wall_ms()));
                 self.accept(lyrics, host);
             }
             Err(e) => {
                 eprintln!("encore: lyrics lookup failed: {e}");
-                self.show_card(host);
+                let retries = c.failed.as_ref().map_or(0, |f| f.retries);
+                let retry_at = RETRY_DELAYS_MS.get(retries).map(|d| host.now_mono_ms() + d);
+                // The card is for the first failure only; a retry that fails stays quiet.
+                let first = c.failed.is_none();
+                c.failed = Some(Failed { retries, retry_at, in_flight: false });
+                if first {
+                    self.show_card(host);
+                }
             }
         }
     }
@@ -948,6 +992,157 @@ mod tests {
         r.poll(None);
         r.poll(play("Song", 0.0));
         assert_eq!(r.h.fetched(), 2);
+    }
+
+    /// Fails the lookup of "Song" at mono 1060 (read at position 2 s) and lets the card end. Returns the failure time.
+    fn failed_lookup() -> (Rig, f64) {
+        let mut r = Rig::new();
+        r.poll(play("Song", 2_000.0));
+        r.lyrics(Err("offline".into()));
+        let at = r.h.mono;
+        r.advance(3_000.0);
+        r.step(None);
+        r.h.out();
+        r.h.vis();
+        (r, at)
+    }
+
+    #[test]
+    fn network_change_refetches_after_error() {
+        let (mut r, _) = failed_lookup();
+        assert_eq!(r.h.fetched(), 1);
+        r.step(Some(Msg::NetworkChanged));
+        assert_eq!(r.h.fetched(), 2);
+        // At most one lookup in flight: a second event while it runs starts nothing.
+        r.step(Some(Msg::NetworkChanged));
+        assert_eq!(r.h.fetched(), 2);
+        r.lyrics(Ok(Lyrics::Synced(song())));
+        assert_eq!(r.h.out().len(), 1);
+        assert_eq!(r.e.cache.get(&track("Song"), r.secs()), Some(Lyrics::Synced(song())));
+    }
+
+    #[test]
+    fn network_change_ignored_when_lyrics_loaded() {
+        let mut r = Rig::showing(song(), 2_000.0);
+        assert_eq!(r.h.fetched(), 1);
+        r.step(Some(Msg::NetworkChanged));
+        assert_eq!((r.h.fetched(), r.h.out(), r.h.vis()), (1, vec![], vec![]));
+
+        // Cached "not found" is an answer, not an error.
+        let mut r = Rig::new();
+        r.poll(play("Song", 2_000.0));
+        r.lyrics(Ok(Lyrics::NotFound));
+        r.step(Some(Msg::NetworkChanged));
+        assert_eq!(r.h.fetched(), 1);
+
+        // No track, and a first lookup still running.
+        let mut r = Rig::new();
+        r.step(Some(Msg::NetworkChanged));
+        r.poll(play("Song", 2_000.0));
+        r.step(Some(Msg::NetworkChanged));
+        assert_eq!(r.h.fetched(), 1);
+    }
+
+    #[test]
+    fn retries_at_5_20_60_then_stop() {
+        let (mut r, failed) = failed_lookup();
+        // Failure at `failed`; the deadline is the retry, as the card is gone.
+        assert_eq!(r.step(None), Some(failed + 5_000.0));
+        r.h.mono = failed + 4_999.0;
+        r.step(None);
+        assert_eq!(r.h.fetched(), 1);
+        r.h.mono = failed + 5_000.0;
+        r.step(None);
+        assert_eq!(r.h.fetched(), 2);
+        // The retry fails quietly: no card again.
+        let again = r.lyrics(Err("offline".into()));
+        assert_eq!(again, Some(failed + 5_000.0 + 20_000.0));
+        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![]));
+
+        r.h.mono = failed + 25_000.0;
+        r.step(None);
+        assert_eq!(r.h.fetched(), 3);
+        assert_eq!(r.lyrics(Err("offline".into())), Some(failed + 25_000.0 + 60_000.0));
+
+        r.h.mono = failed + 85_000.0;
+        r.step(None);
+        assert_eq!(r.h.fetched(), 4);
+        assert_eq!(r.lyrics(Err("offline".into())), None);
+        r.advance(600_000.0);
+        assert_eq!(r.step(None), None);
+        assert_eq!(r.h.fetched(), 4);
+
+        // A later network change starts the schedule again.
+        r.step(Some(Msg::NetworkChanged));
+        assert_eq!(r.h.fetched(), 5);
+        assert_eq!(r.lyrics(Err("offline".into())), Some(r.h.mono + 5_000.0));
+    }
+
+    #[test]
+    fn retry_cancelled_on_track_change() {
+        let (mut r, _) = failed_lookup();
+        r.poll(play("Other", 100.0));
+        assert_eq!(r.h.fetched(), 2);
+        r.advance(100_000.0);
+        r.step(None);
+        assert_eq!(r.h.fetched(), 2);
+
+        // Forgotten (session gone).
+        let (mut r, _) = failed_lookup();
+        r.poll(None);
+        assert_eq!(r.step(None), None);
+        r.advance(100_000.0);
+        r.step(None);
+        assert_eq!(r.h.fetched(), 1);
+    }
+
+    #[test]
+    fn retry_cancelled_when_lyrics_arrive() {
+        let (mut r, _) = failed_lookup();
+        r.step(Some(Msg::NetworkChanged));
+        r.lyrics(Ok(Lyrics::Synced(song())));
+        r.advance(100_000.0);
+        r.step(None);
+        assert_eq!(r.h.fetched(), 2);
+    }
+
+    #[test]
+    fn retry_success_renders_current_line() {
+        let (mut r, failed) = failed_lookup();
+        r.h.mono = failed + 5_000.0;
+        r.h.wall += 5_000;
+        r.step(None);
+        assert_eq!(r.h.fetched(), 2);
+        // The song has played on for 5 s since the read at 2 s: it is in "two" (5 s), not at "one".
+        r.lyrics(Ok(Lyrics::Synced(song())));
+        assert_eq!(r.h.out(), [lines(1, Some("one"), "two", Some("three"), false, true)]);
+        assert_eq!(r.h.vis(), [true]);
+    }
+
+    #[test]
+    fn retry_success_while_hidden_emits_nothing() {
+        let (mut r, failed) = failed_lookup();
+        r.step(Some(Msg::SetVisible(false)));
+        r.h.out();
+        r.h.vis();
+        r.h.mono = failed + 5_000.0;
+        r.step(None);
+        assert_eq!(r.h.fetched(), 2);
+        r.lyrics(Ok(Lyrics::Synced(song())));
+        assert_eq!((r.h.out(), r.h.vis()), (vec![], vec![]));
+        r.step(Some(Msg::SetVisible(true)));
+        assert_eq!(r.h.out(), [lines(1, Some("one"), "two", Some("three"), false, true)]);
+    }
+
+    #[test]
+    fn late_result_for_an_old_track_does_not_end_a_retry() {
+        let (mut r, _) = failed_lookup();
+        let old = r.h.last_key();
+        r.step(Some(Msg::NetworkChanged));
+        r.step(Some(Msg::Lyrics { key: "other".into(), result: Ok(Lyrics::Synced(song())) }));
+        assert_eq!(r.h.out(), []);
+        r.step(Some(Msg::Lyrics { key: old, result: Ok(Lyrics::NotFound) }));
+        assert_eq!(r.e.cache.get(&track("Song"), r.secs()), Some(Lyrics::NotFound));
     }
 
     #[test]
