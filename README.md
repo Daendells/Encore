@@ -4,7 +4,7 @@ Encore menampilkan lirik lagu yang sedang Anda putar di Windows. Liriknya muncul
 
 ![Strip lirik Encore di atas taskbar](docs/screenshot.png)
 
-Bahasa Indonesia ada di bawah ini, [English version below](#english).
+Kode dan unduhan ada di https://github.com/Daendells/Lyrics. Bahasa Indonesia ada di bawah ini, [English version below](#english).
 
 ## Cara kerja
 
@@ -26,21 +26,22 @@ Lirik disimpan di folder data aplikasi (`%LOCALAPPDATA%\io.github.daendells.enco
 
 ## Angka terukur
 
-Semua angka diukur pada versi rilis (`npm run tauri build`) dengan satu lagu diputar dari Spotify desktop. Target yang tidak tercapai ditulis apa adanya.
+Semua angka diukur pada versi rilis (commit 3d30e28) di laptop Windows 10 Home 19045 dengan WebView2 157, pada 13 November 2026. Perbaikan DNS sesudahnya tidak memengaruhi angka-angka ini. Target yang tidak tercapai ditulis apa adanya.
 
 | Hal | Target | Hasil | Arti |
 |---|---|---|---|
-| Selisih rata-rata waktu baris tampil terhadap waktu di LRC | kurang dari 150 ms | TODO-ANGKA ms | Rata-rata nilai mutlak selisih pada baris yang dimunculkan timer, dari log waktu |
-| Selisih p95 | kurang dari 300 ms | TODO-ANGKA ms | 95% baris tampil dengan selisih sekecil ini atau lebih kecil |
-| CPU saat lagu jalan | rata-rata kurang dari 1% | TODO-ANGKA % | Persen dari seluruh inti logis (seperti Task Manager). Persen dari satu inti: TODO-ANGKA % |
-| RAM seluruh proses (private bytes) | kurang dari 80 MiB | TODO-ANGKA MiB | Jumlah Encore dan semua proses WebView2 miliknya |
-| RAM seluruh proses (working set) | tanpa target | TODO-ANGKA MiB | Lebih besar karena menghitung halaman yang dipakai bersama |
-| Ukuran installer | kurang dari 15 MiB | 1,75 MiB (1.839.683 byte) | `Encore_0.1.0_x64-setup.exe` |
-| Salah cocok pada 50 lagu uji | 0 | TODO-ANGKA | Lagu yang mendapat lirik lagu lain |
-| Lagu uji yang mendapat lirik | tanpa target | TODO-ANGKA dari 50 | Sisanya tidak ditemukan |
-| Alamat tujuan jaringan selain LRCLIB | 0 | TODO-ANGKA | Alamat TCP yang terlihat selama pengukuran (TCP saja, dicuplik kira-kira tiap 350 milidetik. Koneksi singkat dan UDP/QUIC tidak terlihat) |
+| Keterlambatan baris tampil setelah waktu di LRC, rata-rata | kurang dari 150 ms | 10,9 ms | 101 pergantian baris pada 5 lagu Spotify. Diukur terhadap posisi yang dilaporkan Spotify ke Windows, bukan terhadap suara |
+| Keterlambatan baris tampil, p95 | kurang dari 300 ms | 17 ms | 95% baris tampil dengan keterlambatan sekecil ini atau lebih kecil. Terlama 19 ms |
+| CPU saat lagu jalan | rata-rata kurang dari 1% | 0,10% | Persen dari seluruh inti, rata-rata. Setara 1,21% dari satu inti |
+| RAM saat lagu jalan dan lirik tampil (private bytes) | kurang dari 80 MiB | 64,2 MiB | Jumlah `encore.exe` dan proses WebView2-nya, rata-rata selama 120 detik. Tertinggi 66,5 MiB. Saat strip disembunyikan: 61,7 MiB |
+| RAM saat lagu jalan (working set) | tanpa target | sekitar 225 MiB | Jauh lebih besar karena menghitung halaman WebView2 yang dipakai bersama. Saat strip disembunyikan: sekitar 71 MiB |
+| Ukuran installer | kurang dari 15 MiB | 1,75 MiB (1.839.946 byte) | `Encore_0.1.0_x64-setup.exe` |
+| Lirik salah pada 50 lagu uji | 0 | 0 | Tidak ada lagu yang mendapat lirik lagu lain |
+| Lagu uji yang tidak mendapat lirik padahal ada | 0 | 0 | 11 dari 50 lagu memang harus tanpa lirik |
+| Alamat tujuan jaringan selain LRCLIB | 0 | 0 | Dalam uji 120 detik dengan satu lagu baru, hanya `lrclib.net` yang dihubungi, oleh `encore.exe`. Proses WebView2 tidak membuat koneksi (lihat catatan di bawah) |
 
-Tanggal ukur: TODO-ANGKA. Mesin: TODO-ANGKA.
+Pencocokan lirik diuji dengan 50 lagu nyata yang disusun oleh orang yang tidak melihat kode pencocokan: lagu Indonesia, Inggris, Jepang, Korea, dan bahasa lain, dengan judul berhiasan (remaster, live, feat., judul YouTube). Sebelas lagu di antaranya memang tidak boleh mendapat lirik. Uji dijalankan satu kali. Pemeriksa judul yang ketat melaporkan 44 lagu benar dan 6 lagu perlu dilihat. Setelah 6 lagu itu diperiksa lewat isi liriknya, 5 ternyata lirik lagu yang sama dengan judul tersimpan lebih panjang (versi live, judul YouTube, atau "movie ver."). Satu lagu adalah instrumental yang tampil sebagai "♪".
+
 
 Cara mengukur ulang:
 
@@ -58,7 +59,7 @@ cd src-tauri
 cargo run --release --example eval -- ..\eval\sample.json hasil.json
 ```
 
-Log waktu hanya aktif kalau `ENCORE_TIMING_LOG` diisi. Yang dihitung hanya baris yang dimunculkan timer, yaitu pindah tepat satu baris maju. Baris yang muncul karena jeda atau lanjut putar, tampil atau sembunyi, geser offset, seek, ganti pengaturan, atau baris pertama lagu tidak dihitung, dan skrip menyebutkan jumlahnya. Pengukuran jaringan hanya melihat koneksi TCP yang dicuplik kira-kira tiap 350 milidetik, jadi koneksi singkat dan UDP/QUIC tidak terlihat. Log ini mengukur kapan Encore menggambar baris, tidak kapan suara terdengar. Karena itu offset tetap perlu untuk keterlambatan tetap dari pemutar.
+Log waktu hanya aktif kalau `ENCORE_TIMING_LOG` diisi. Yang dihitung hanya baris yang dimunculkan timer, yaitu pindah tepat satu baris maju. Baris yang muncul karena jeda atau lanjut putar, tampil atau sembunyi, geser offset, seek, ganti pengaturan, atau baris pertama lagu tidak dihitung, dan skrip menyebutkan jumlahnya. Pengukuran jaringan hanya melihat koneksi TCP yang dicuplik kira-kira tiap 450 milidetik, jadi koneksi singkat dan UDP/QUIC tidak terlihat. Log ini membandingkan waktu baris tampil dengan posisi yang dilaporkan pemutar ke Windows, bukan dengan suara yang terdengar. Karena itu offset tetap perlu untuk keterlambatan tetap dari pemutar.
 
 ## Batasan
 
@@ -133,23 +134,24 @@ Lyrics are cached in the app data folder (`%LOCALAPPDATA%\io.github.daendells.en
 
 ## Measured numbers
 
-All numbers come from a release build (`npm run tauri build`) playing one song from desktop Spotify. Targets that were not met are stated as such.
+All numbers come from a release build (commit 3d30e28) on a Windows 10 Home 19045 laptop with WebView2 157, on 13 November 2026. The DNS fix made afterwards does not affect them. Targets that were not met are stated as such.
 
 | Item | Target | Result | Meaning |
 |---|---|---|---|
-| Mean offset between a line appearing and its LRC time | under 150 ms | TODO-ANGKA ms | Mean of the absolute offset over lines the timer put on screen, from the timing log |
-| p95 offset | under 300 ms | TODO-ANGKA ms | 95% of lines appear with this offset or less |
-| CPU while a song plays | mean under 1% | TODO-ANGKA % | Percent of all logical cores (as in Task Manager). Percent of one core: TODO-ANGKA % |
-| RAM of all processes (private bytes) | under 80 MiB | TODO-ANGKA MiB | Encore plus all its WebView2 processes |
-| RAM of all processes (working set) | no target | TODO-ANGKA MiB | Larger because it counts shared pages |
-| Installer size | under 15 MiB | 1.75 MiB (1,839,683 bytes) | `Encore_0.1.0_x64-setup.exe` |
-| Wrong matches in the 50-song test set | 0 | TODO-ANGKA | Songs that received another song's lyrics |
-| Test songs that got lyrics | no target | TODO-ANGKA of 50 | The rest were not found |
-| Network destinations other than LRCLIB | 0 | TODO-ANGKA | TCP addresses seen during the measurement (TCP only, sampled about every 350 ms. Short connections and UDP/QUIC are not seen) |
+| Delay of a line appearing after its LRC time, mean | under 150 ms | 10.9 ms | 101 line changes over 5 Spotify songs. Measured against the position Spotify reports to Windows, not against the audio |
+| Delay of a line appearing, p95 | under 300 ms | 17 ms | 95% of lines appear with this delay or less. The longest was 19 ms |
+| CPU while a song plays | mean under 1% | 0.10% | Percent of all cores, on average. This equals 1.21% of one core |
+| RAM while a song plays and lyrics show (private bytes) | under 80 MiB | 64.2 MiB | `encore.exe` plus its WebView2 process, averaged over 120 seconds. Peak 66.5 MiB. With the strip hidden: 61.7 MiB |
+| RAM while a song plays (working set) | no target | about 225 MiB | Much larger because it counts WebView2 pages shared between processes. With the strip hidden: about 71 MiB |
+| Installer size | under 15 MiB | 1.75 MiB (1,839,946 bytes) | `Encore_0.1.0_x64-setup.exe` |
+| Wrong lyrics in the 50-song test set | 0 | 0 | No song received another song's lyrics |
+| Test songs that got no lyrics although they exist | 0 | 0 | 11 of the 50 songs must get no lyrics |
+| Network destinations other than LRCLIB | 0 | 0 | In a 120 second run with a new song, only `lrclib.net` was contacted, by `encore.exe`. The WebView2 process made no connection (see the note below) |
 
-Measured on: TODO-ANGKA. Machine: TODO-ANGKA.
+Lyric matching was tested with 50 real songs chosen by someone who did not see the matching code: Indonesian, English, Japanese, Korean and other languages, with decorated titles (remaster, live, feat., YouTube titles). Eleven of them must get no lyrics. The test was run once. The strict title check reported 44 songs correct and 6 to inspect. After checking those 6 by their lyric text, 5 were the same song's lyrics stored under a longer title (live, YouTube or "movie ver."). One was an instrumental shown as "♪".
 
-To measure again, use the PowerShell commands in the Indonesian section above (the 50-song blind set is kept outside the repo, `eval/sample.json` is a small example). The timing log counts only lines the timer put on screen, that is, a move forward by exactly one line. Lines shown after pause or resume, show or hide, an offset nudge, a seek, a settings change or the first line of a song are not counted, and the script reports how many were left out. The network check sees TCP connections only, sampled about every 350 ms, so short connections and UDP/QUIC are not seen. The timing log records when Encore draws a line, not when the sound is heard, so the per-app offset stays useful for fixed player delay.
+
+To measure again, use the PowerShell commands in the Indonesian section above (the 50-song blind set is kept outside the repo, `eval/sample.json` is a small example). The timing log counts only lines the timer put on screen, that is, a move forward by exactly one line. Lines shown after pause or resume, show or hide, an offset nudge, a seek, a settings change or the first line of a song are not counted, and the script reports how many were left out. The network check sees TCP connections only, sampled about every 450 ms, so short connections and UDP/QUIC are not seen. The timing log compares when a line appears with the position the player reports to Windows, not with the sound you hear, so the per-app offset stays useful for fixed player delay.
 
 ## Limitations
 
